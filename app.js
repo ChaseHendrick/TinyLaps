@@ -65,7 +65,7 @@ function buildRoad(){
  const banner=mesh(rounded(10.7,1,.3,.12),material(0xd58b6b),arch,0,4.55,0);banner.castShadow=true;
  const c=document.createElement('canvas');c.width=768;c.height=96;const cx=c.getContext('2d');cx.fillStyle='#d58b6b';cx.fillRect(0,0,768,96);cx.fillStyle='#fff6df';cx.textAlign='center';cx.font='600 44px sans-serif';cx.fillText('T I N Y   L A P S',384,66);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;mesh(new THREE.PlaneGeometry(8,.85),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}),arch,0,4.55,.16);
 }
-function islandShape(scale=1){const s=new THREE.Shape();for(let i=0;i<=120;i++){const a=i/120*Math.PI*2,r=1+.032*Math.sin(a*3+.2)+.022*Math.cos(a*5);const x=Math.cos(a)*64*r*scale,z=Math.sin(a)*47*r*scale;if(i===0)s.moveTo(x,z);else s.lineTo(x,z)}return s}
+function islandShape(scale=1){const s=new THREE.Shape();for(let i=0;i<=120;i++){const a=i/120*Math.PI*2,r=1+.032*Math.sin(a*3+.2)+.022*Math.cos(a*5);const x=Math.cos(a)*64*r*scale,z=Math.sin(a)*47*r*scale;if(i===0)s.moveTo(x,-z);else s.lineTo(x,-z)}return s}
 function buildIsland(config){
  const g=new THREE.ExtrudeGeometry(islandShape(),{depth:3.4,bevelEnabled:true,bevelSegments:5,steps:1,bevelSize:1.5,bevelThickness:1.1,curveSegments:64});g.rotateX(-Math.PI/2);g.translate(0,-4.64,0);const retained=[];const normal=g.attributes.normal;for(let i=0;i<normal.count;i+=3){if(normal.getY(i)>.97&&g.attributes.position.getY(i)>-.2)continue;retained.push(i,i+1,i+2)}g.setIndex(retained);mesh(g,material(config.sand),world);
  terrain=new TerrainSystem({group:world,grassColor:config.grass,sandColor:config.sand});
@@ -73,7 +73,7 @@ function buildIsland(config){
  const white= new THREE.MeshBasicMaterial({color:0xf5f4dd,transparent:true,opacity:.26,depthWrite:false});const waves=[];const random=seeded(123);
  for(let i=0;i<180;i++){const x=(random()-.5)*350,z=(random()-.5)*270;if((x*x/69**2+z*z/52**2)<1.1)continue;const m=new THREE.Mesh(new THREE.PlaneGeometry(1+random()*3,.12));m.rotation.x=-Math.PI/2;m.rotation.z=random()*.25;m.position.set(x,-2.97,z);waves.push(m)}batch(waves,white,world);
  // Pale beaches hug the rounded edge of the island.
- const shore=new THREE.BufferGeometry(),pos=[],ind=[];for(let i=0;i<=200;i++){const a=i/200*Math.PI*2,r=1+.032*Math.sin(a*3+.2)+.022*Math.cos(a*5);for(const q of [.966,1.018])pos.push(Math.cos(a)*64*r*q,.015,Math.sin(a)*47*r*q);if(i<200){const j=i*2;ind.push(j,j+2,j+1,j+1,j+2,j+3)}}shore.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));shore.setIndex(ind);shore.computeVertexNormals();terrain.registerMesh(mesh(shore,material(0xe2cfaa),world));
+ const shore=new THREE.BufferGeometry(),pos=[],ind=[];for(let i=0;i<=200;i++){const a=i/200*Math.PI*2,r=1+.032*Math.sin(a*3+.2)+.022*Math.cos(a*5);for(const q of [.966,1.037])pos.push(Math.cos(a)*64*r*q,.015,Math.sin(a)*47*r*q);if(i<200){const j=i*2;ind.push(j,j+2,j+1,j+1,j+2,j+3)}}shore.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));shore.setIndex(ind);shore.computeVertexNormals();terrain.registerMesh(mesh(shore,material(0xe2cfaa),world));
 }
 function buildRiver(){
  const river=new THREE.CatmullRomCurve3([[12,-40],[24,-28],[33,-16],[45,-12],[64,-5]].map(([x,z])=>new THREE.Vector3(x,.038,z)));

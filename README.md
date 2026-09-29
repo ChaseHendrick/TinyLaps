@@ -4,6 +4,8 @@ A little world, always in motion. Ten autonomous racers compete around smooth mi
 
 **[Watch the race](https://chasehendrick.github.io/TinyLaps/)**
 
+![Tiny Laps miniature racing island](preview.png)
+
 Open `index.html` directly in a modern browser. It is a portable offline build with no asset downloads, accounts, API keys, or external service calls.
 
 ## Explore
