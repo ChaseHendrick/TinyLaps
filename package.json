@@ -1,0 +1,14 @@
+{
+  "name": "tiny-laps",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A miniature racing diorama with autonomous drivers, vehicle dynamics and collision damage.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node tests/physics.mjs && node tests/models.mjs && node tests/terrain.mjs && node tests/scenery.mjs",
+    "start": "python3 -m http.server 8765 --bind 127.0.0.1"
+  },
+  "dependencies": {"three": "0.180.0"},
+  "devDependencies": {"esbuild": "0.25.10"}
+}
