@@ -14,3 +14,81 @@
 .grab-menu{position:fixed;z-index:9;right:20px;bottom:78px;width:min(330px,calc(100vw - 24px));padding:16px;color:#344c3b;font-size:11px;box-shadow:0 8px 40px #25413635}.grab-menu[hidden]{display:none}.grab-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.grab-heading b{font:21px Georgia,serif;font-weight:400}.grab-heading button{font-size:24px;padding:4px 8px}.grab-modes{display:flex;gap:5px;margin-top:13px}.grab-modes button{flex:1;padding:10px 6px;border-radius:8px;background:#e9ecdd;font-size:10px;line-height:1.3}.grab-modes button[aria-pressed=true]{background:#355747;color:#fff9e9}.grab-menu p{line-height:1.6;color:#67775e;margin:13px 0}.grab-camera{width:100%;background:#f0e3cc;border-radius:8px;padding:10px;font-size:11px}.grab-menu button:focus-visible{outline:2px solid #b86f4e;outline-offset:3px}@media(max-width:700px){.grab-menu{right:12px;bottom:76px}.dev-panel:has([data-tool=throw].active){display:none}}
 
 .world-filters{display:flex;gap:6px;margin:0 0 18px}.world-filters button{padding:10px 14px;border-radius:9px;background:#e9ecdd;color:#53664e;font-size:11px}.world-filters button[aria-pressed=true]{background:#355747;color:#fff9e9}.world-option[hidden]{display:none}.world-streets{stroke:#8fa08c;stroke-width:2;fill:none}
+
+/* Driving is an action on the selected racer, independent of the camera. */
+#leaderboard{display:flex;flex-direction:column}
+#drive-racer{display:block;width:100%;min-height:44px;margin:0 0 12px;padding:10px 14px;border-radius:10px;background:#345746;color:#fffaf0;font-size:12px;font-weight:650;box-shadow:0 3px 10px #34574620}
+#drive-racer:hover{background:#426850;color:#fffaf0}
+#drive-racer[aria-pressed=true]{background:#b86f4e;color:#fffaf0}
+.driving-controls{position:absolute;left:50%;bottom:108px;transform:translateX(-50%);width:min(450px,calc(100vw - 460px));padding:12px;border-radius:17px}
+.driving-controls[hidden]{display:none}
+.driving-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px}
+.driving-title{display:flex;flex-direction:column;gap:6px;min-width:0}
+.driving-title b{font:400 20px Georgia,serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.driving-title .eyebrow{font-size:7px;letter-spacing:1.1px;white-space:nowrap}
+.driving-actions{display:flex;gap:6px;flex-shrink:0}
+.driving-actions button{min-height:44px;width:72px;padding:7px 8px;border-radius:9px;background:#e8ecdf;font-size:10px;line-height:1.35;font-weight:600}
+.driving-actions #stop-driving{background:#345746;color:#fffaf0}
+.driving-actions #stop-driving:hover{background:#426850;color:#fffaf0}
+#driving-help{margin:7px 0 10px;color:#687a67;font-size:10px;line-height:1.5}
+.driving-pad{display:grid;grid-template-columns:repeat(5,minmax(44px,1fr));gap:6px}
+.driving-pad button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:44px;min-height:54px;padding:6px 4px;border:1px solid #c8d4bf;border-radius:10px;background:#edf0e3;color:#405943;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.driving-pad button>span{font-size:22px;line-height:1}
+.driving-pad button small{font-size:9px;line-height:1.2;font-weight:600}
+.driving-pad [data-drive=accelerate]{background:#dce8d5;border-color:#9fba91}
+.driving-pad [data-drive=brake]{background:#f1e5d3;border-color:#d4bd99}
+.driving-pad button.pressed,.driving-pad button[aria-pressed=true]{background:#345746;border-color:#345746;color:#fffaf0;box-shadow:inset 0 2px 5px #20362a45;transform:translateY(1px)}
+body.driving-mode .hint{visibility:hidden}
+@media(max-width:800px) and (min-height:561px){
+ #drive-racer{margin:7px 0 8px;min-height:44px;font-size:11px}
+ .driving-controls{left:16px;right:16px;bottom:122px;transform:none;width:auto;padding:12px}
+ .driving-title b{font-size:17px}
+ .driving-actions button{width:68px;font-size:10px}
+ #driving-help{font-size:9px;max-width:270px}
+ .driving-pad{gap:5px}
+ .driving-pad button{min-height:56px}
+ body.driving-mode #selected{left:16px;right:16px;width:auto;bottom:302px;max-height:210px;overflow:auto}
+ body.driving-mode .standings #leaderboard{max-height:max(0px,calc(100dvh - 784px))}
+}
+@media(min-width:701px) and (max-height:560px){
+ body.driving-mode #selected{left:20px;right:auto;top:105px;bottom:auto;width:205px;max-height:calc(100dvh - 211px);padding:10px 13px 0;overflow:auto}
+ body.driving-mode #selected .selected-name{margin-top:5px}
+ body.driving-mode #selected .telemetry{margin:8px 0}
+ body.driving-mode #drive-racer{margin-bottom:7px}
+ body.driving-mode .standings{left:auto;right:20px;top:105px;width:185px}
+ body.driving-mode .standings #leaderboard{max-height:max(0px,calc(100dvh - 347px))}
+ body.driving-mode .race-mood{left:260px;right:auto;top:28px;width:190px;gap:6px;padding:8px}
+ body.driving-mode .race-mood>span{font-size:5px;letter-spacing:.6px}
+ body.driving-mode .tools{top:25px;right:249px}
+ .driving-controls{width:min(450px,calc(100vw - 480px));bottom:106px}
+ .driving-title b{font-size:17px}
+ .driving-actions button{width:65px}
+ #driving-help{font-size:9px}
+ body.driving-mode .camera-bar{left:auto;right:20px;bottom:15px;transform:none}
+ body.driving-mode footer{left:20px;right:auto;bottom:18px}
+ body.driving-mode footer .hint{display:none}
+ body.driving-mode .footer-actions{gap:2px;flex-wrap:nowrap}
+ body.driving-mode .footer-actions button{width:32px;height:38px;padding:7px}
+ body.driving-mode .footer-actions #grab-cars{width:42px;min-height:38px;padding:9px}
+ body.driving-mode .footer-actions #grab-cars span{display:none}
+}
+@media(max-width:700px) and (max-height:560px){
+ body.driving-mode .brand{top:12px;left:12px}
+ body.driving-mode .race-mood{display:none}
+ body.driving-mode .worlds{left:auto;right:12px;top:12px;width:190px}
+ body.driving-mode .tools{top:82px;right:12px}
+ body.driving-mode .standings{display:none}
+ body.driving-mode #selected{left:12px;right:auto;top:78px;bottom:auto;width:152px;max-height:calc(100dvh - 178px);padding:10px;overflow:auto}
+ body.driving-mode #selected .selected-name{padding:0}
+ body.driving-mode #selected .selected-name b{font-size:18px}
+ body.driving-mode #selected .telemetry{position:static;width:auto;gap:8px;margin:7px 0}
+ body.driving-mode #selected .selected-foot span{display:none}
+ body.driving-mode #selected .selected-heading .eyebrow{font-size:6px;letter-spacing:.5px}
+ .driving-controls{left:176px;right:12px;bottom:111px;width:auto;transform:none;padding:10px}
+ .driving-title b{font-size:16px}
+ .driving-actions button{width:60px;font-size:9px}
+ #driving-help{font-size:8px}
+ .driving-pad{gap:4px}
+ .driving-pad button{min-height:48px}
+ .driving-pad button small{font-size:8px}
+}

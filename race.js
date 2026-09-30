@@ -77,6 +77,8 @@ export class RaceSimulation {
     this._contacts = new Map();
     this._sensedTraffic = [];
     this._senseTrafficAt = 0;
+    this.playerCarId = null;
+    this.playerInput = { steer:0, accelerate:0, reverse:0, brake:0 };
     this.cars = CAR_PROFILES.map((profile, id) => {
       const progress = -1.5 - Math.floor(id / 2) * 3.55 - (id % 2) * .20;
       const lane = id % 2 ? 1.15 : -1.15;
@@ -109,6 +111,30 @@ export class RaceSimulation {
     });
     this.setAggression(this.aggression);
     return this;
+  }
+
+  /** Take the wheel of one racer, or return every racer to autonomous driving. */
+  setPlayerCar(id) {
+    if (id !== null && (!Number.isInteger(id) || !this.cars.some(car => car.id === id))) return false;
+    const previous = this.cars.find(car => car.id === this.playerCarId);
+    this.playerCarId = id;
+    this.setPlayerInput({});
+    if (previous && previous.id !== id) {
+      previous.reverseUntil = previous.stuckTime = previous.trafficWait = 0;
+      previous.throttle = previous.brake = 0;
+      if (!previous.held) this._driver(previous,0);
+    }
+    const selected = this.cars.find(car => car.id === id);
+    if (selected) this._playerDriver(selected,0);
+    return true;
+  }
+
+  /** Complete transient input state. Missing or nonfinite axes are neutral. */
+  setPlayerInput(input = {}) {
+    const axis = (key,min,max) => Number.isFinite(input?.[key]) ? clamp(input[key],min,max) : 0;
+    this.playerInput = { steer:axis('steer',-1,1), accelerate:axis('accelerate',0,1),
+      reverse:axis('reverse',0,1), brake:axis('brake',0,1) };
+    return { ...this.playerInput };
   }
 
   setAggression(level) {
@@ -266,6 +292,32 @@ export class RaceSimulation {
       if (gap > -rearBuffer && gap < 3.1 - car.aggression * .35) return false;
     }
     return true;
+  }
+
+  _playerDriver(car, dt) {
+    const { f,r } = axes(car);
+    const u = dot({x:car.vx,z:car.vz},f);
+    car.longitudinalSpeed = u;
+    car.lateralSpeed = dot({x:car.vx,z:car.vz},r);
+    car.passing = false;
+    car.reverseUntil = car.stuckTime = car.trafficWait = 0;
+    const input = this.playerInput;
+    // Wheel angle tapers at speed so a held key remains controllable. Steering
+    // is a real front-wheel input, without a target lane or route correction.
+    const maxSteer = (.64-car.damage.suspension*.10)/(1+Math.abs(u)*.085);
+    car.steering = approach(car.steering,input.steer*maxSteer,(input.steer ? 3.1 : 4.1)*dt);
+    car.throttle = car.brake = 0;
+    if (input.brake > 0 || (input.accelerate > 0 && input.reverse > 0)) {
+      car.brake = Math.max(input.brake,input.accelerate > 0 && input.reverse > 0 ? 1 : 0);
+    } else if (input.accelerate > 0) {
+      if (u < -.35) car.brake = input.accelerate;
+      else { car.gear = 1; car.throttle = input.accelerate; }
+    } else if (input.reverse > 0) {
+      if (u > .35) car.brake = input.reverse;
+      else { car.gear = -1; car.throttle = input.reverse; }
+    }
+    car.intent = car.brake > .05 ? 'You are braking' : car.gear < 0 && car.throttle > 0
+      ? 'You are reversing' : 'You are driving';
   }
 
   _driver(car, dt) {
@@ -427,8 +479,14 @@ export class RaceSimulation {
     const engineForce = car.throttle * car.mass * (car.profile.acceleration * .82)
       * Math.max(.12,1 - (Math.abs(u) / (car.profile.topSpeed + 4)) ** 2)
       * (1 - car.damage.engine * .72) * car.gear * this.physics.enginePower;
-    const direction = Math.abs(u) > .05 ? Math.sign(u) : car.gear;
-    const brakeForce = car.brake * car.mass * 9.4 * direction;
+    const direction = Math.sign(u) || car.gear;
+    // Resistance dissipates motion. Limit it by the available momentum so a
+    // stopped or gently coasting body is not pushed into the opposite direction.
+    const aerodynamicDrag = .47*u*Math.abs(u);
+    const resistanceBudget = Math.max(0,Math.abs(u)*car.mass/dt-Math.abs(aerodynamicDrag));
+    const rollingResistance = Math.min(car.surface === 'grass' ? 190 : 70,resistanceBudget);
+    const brakeForce = Math.min(car.brake*car.mass*9.4,
+      Math.max(0,resistanceBudget-rollingResistance))*direction;
     const frontFx = clamp(-brakeForce * .64,-frontLimit,frontLimit);
     const rearFx = clamp(engineForce - brakeForce * .36,-rearLimit,rearLimit);
     const active = clamp(Math.abs(u) / 1.2,0,1);
@@ -450,7 +508,7 @@ export class RaceSimulation {
     const steer = car.steering * Math.sign(u || car.gear);
     const frontForward = frontFx * Math.cos(steer) - frontFy * Math.sin(steer);
     const frontLateral = frontFx * Math.sin(steer) + frontFy * Math.cos(steer);
-    const drag = .47 * u * Math.abs(u) + direction * (car.surface === 'grass' ? 190 : 70);
+    const drag = aerodynamicDrag+direction*rollingResistance;
     const lateralRolling = v * (car.surface === 'grass' ? 130 : 35);
     const longitudinal = frontForward + rearFx - drag;
     const lateral = frontLateral + rearFy - lateralRolling;
@@ -694,7 +752,10 @@ export class RaceSimulation {
   _step(dt) {
     const startTime = this.elapsed;
     this._senseTraffic();
-    for (const car of this.leaderboard) if (!car.held) this._driver(car,dt);
+    for (const car of this.leaderboard) if (!car.held) {
+      if (car.id === this.playerCarId) this._playerDriver(car,dt);
+      else this._driver(car,dt);
+    }
     for (const car of this.cars) if (!car.held) this._integrate(car,dt);
     this.elapsed += dt;
     for (const car of this.cars) if (!car.held) { this._barrier(car); this._environmentContacts(car); }

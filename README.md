@@ -16,6 +16,8 @@ Open `index.html` directly in a modern browser. It is a portable offline build w
 - **Meadow Oval, Orchard Square, Crescent Cove, Fern Switchbacks, Lantern Point, Lucky Clover, Seabreeze Sprint, Highland Ribbon, Lagoon Keyhole, Amber Chicane, Summit Loop and Dusk Run** add twelve different centerlines, including long straights, linked bends, narrow loops and elevated sections.
 - Drag to orbit, scroll or pinch to zoom, and use the zoom buttons for close views.
 - Select a car in the world or standings. **Follow** trails it, **Ride** faces along its actual heading, and **Tour** slowly circles the island.
+- Choose **Drive this car** to control the selected racer. **WASD or arrows** accelerate, steer, and brake into reverse; **Shift** brakes. Touch controls support steering and a pedal together. The other nine racers keep competing. Switching racers transfers control with neutral inputs; **Let AI drive** or **Stop driving** hands it back.
+- **Return to road** places a stranded player car in a clear spot on the course without repairing its damage. Leaving the window pauses manual driving. Opening worlds, pausing, or switching cars clears held inputs. Changing worlds or restarting returns all cars to AI.
 - Racers keep competing. Each has a distinct autonomous driving policy: attackers, late brakers, defenders, opportunists and hotheads. The temperament selector changes their appetite for risk.
 - The condition meter, contact count and driving intent show what is happening. Impacts visibly crumple panels, mark paint, bend glass and alter wheel alignment. Heavy front damage produces engine smoke.
 - Restart restores cars, terrain, scenery, barriers and tire marks while preserving your camera, speed and pause state. On phones, standings and driver details start compact and can be expanded.
@@ -46,16 +48,18 @@ The villages have 36 residents, including families. Adults and children walk aro
 | Key | Action |
 | --- | --- |
 | `1` / `2` / `3` / `4` | Explore / Follow / Ride / Tour camera |
-| `←` / `→` | Select previous / next racer |
+| `←` / `→` | Select previous / next racer while watching; steer while driving |
+| `WASD` / arrow keys | Steer, accelerate, and brake into reverse while driving |
+| `Shift` | Brake while driving |
 | `+` / `−` | Zoom |
 | `Space` | Pause / resume |
 | `H` | Hide / show the main controls |
 | `G` | Pick up, drop, or throw cars, adults, and scenery |
-| `D` | Developer tools and god powers |
+| `D` | Developer tools and god powers while watching; steer right while driving |
 | `Alt` + `M` | Open the circuit chooser |
-| `Escape` | Close god tools and return to exploration |
+| `Escape` | Stop manual driving, close god tools, and return to exploration |
 
-Your current circuit and race save automatically in this browser every 2.5 seconds and when you leave. Saves retain lap progress, car damage, sculpted terrain, scenery damage and moved buildings, residents and their recovery, barriers, city traffic, water flow, camera, and control settings. Reopening restores that race without advancing it while the page was closed. An older city save keeps its world changes and car damage when a route revision moves racers onto the new streets; lap timing restarts for the revised course. Restart deliberately clears race and world damage. If browser storage is unavailable, the game reports that the race is limited to the current session.
+Your current circuit and race save automatically in this browser every 2.5 seconds and when you leave. Saves retain lap progress, car damage, sculpted terrain, scenery damage and moved buildings, residents and their recovery, barriers, city traffic, water flow, camera, and control settings. Reopening restores that race without advancing it while the page was closed. Manual driving also resumes for the selected racer, with neutral pedals and steering inputs. An older city save keeps its world changes and car damage when a route revision moves racers onto the new streets; lap timing restarts for the revised course. Restart deliberately clears race and world damage. If browser storage is unavailable, the game reports that the race is limited to the current session.
 
 Optional ambient audio starts only after you enable it. The camera button saves a postcard of the current view. Fullscreen uses the browser's fullscreen feature.
 
@@ -82,6 +86,7 @@ Open `http://127.0.0.1:8765`. The local server command requires Python 3. Rebuil
 | --- | --- |
 | `app.js` | Scene, cameras, UI and system integration |
 | `race.js` | Vehicle dynamics, contacts, driving AI and lap timing |
+| `driving-input.js` | Transient keyboard and multi-touch player controls |
 | `cars.js` | Rounded roadsters, directional damage and smoke |
 | `scenery.js` | Village, vegetation, animation, destructible props and debris |
 | `terrain.js` | Mutable height field, road deformation and surface sampling |
