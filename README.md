@@ -10,13 +10,14 @@ Open `index.html` directly in a modern browser. It is a portable offline build w
 
 ## Explore
 
-- **Pebble Bay:** a coastal village, river bridge, lighthouse and sailboats.
-- **Clover Hills:** rounded peaks, forest and a winding circuit.
-- **Sundown:** warm evening light over a miniature valley.
+- Choose among **15 circuits** with miniature route previews. The chooser freezes the race while open, then restores your previous pause state.
+- **Pebble Bay, Clover Hills and Sundown Valley** retain the original coastal, hill and evening worlds.
+- **Meadow Oval, Orchard Square, Crescent Cove, Fern Switchbacks, Lantern Point, Lucky Clover, Seabreeze Sprint, Highland Ribbon, Lagoon Keyhole, Amber Chicane, Summit Loop and Dusk Run** add twelve different centerlines, including long straights, linked bends, narrow loops and elevated sections.
 - Drag to orbit, scroll or pinch to zoom, and use the zoom buttons for close views.
 - Select a car in the world or standings. **Follow** trails it, **Ride** faces along its actual heading, and **Tour** slowly circles the island.
 - Racers keep competing. Each has a distinct autonomous driving policy: attackers, late brakers, defenders, opportunists and hotheads. The temperament selector changes their appetite for risk.
 - The condition meter, contact count and driving intent show what is happening. Impacts visibly crumple panels, mark paint, bend glass and alter wheel alignment. Heavy front damage produces engine smoke.
+- Restart restores cars, terrain, scenery, barriers and tire marks while preserving your camera, speed and pause state. On phones, standings and driver details start compact and can be expanded.
 
 ## God powers and developer tools
 
@@ -47,13 +48,14 @@ Buildings crumple into rubble, trees fall, and broken props become nonsolid. Deb
 | `Space` | Pause / resume |
 | `H` | Hide / show the main controls |
 | `D` | Developer tools and god powers |
+| `Alt` + `M` | Open the circuit chooser |
 | `Escape` | Close god tools and return to exploration |
 
 Optional ambient audio starts only after you enable it. The camera button saves a postcard of the current view. Fullscreen uses the browser's fullscreen feature.
 
 ## How it works
 
-The scene is procedurally modeled with Three.js. Vehicles use a fixed 120 Hz simulation with finite mass and yaw inertia, front and rear tire slip, friction limits shared between steering and braking, longitudinal weight transfer, engine force, drag, braking and surface friction. Autonomous drivers steer, choose passing lines, defend positions, plan braking and recover from mistakes.
+The scene is procedurally modeled with Three.js. The camera adjusts its near plane for wide views, and decorative surface layers use explicit depth offsets to keep beaches, paint and water stable as the camera moves. These rendering offsets do not change the physical terrain height. Vehicles use a fixed 120 Hz simulation with finite mass and yaw inertia, front and rear tire slip, friction limits shared between steering and braking, longitudinal weight transfer, engine force, drag, braking and surface friction. Autonomous drivers steer, choose passing lines, defend positions, plan braking and recover from mistakes.
 
 Car contacts use oriented rectangles, contact impulses, angular response, friction and penetration correction. Throws and shockwaves can launch cars into ballistic flight, with gravity, air drag, height-aware contacts and landing damage. Tire forces stop while a car is airborne. Static scenery uses approximate circular colliders. Impact severity accumulates directional body damage and reduces engine power, tire stiffness and grip. World damage shares the vehicle simulation's surface and obstacle data.
 
@@ -81,7 +83,7 @@ Open `http://127.0.0.1:8765`. The local server command requires Python 3. Rebuil
 | `tracks.js` | Shared circuit definitions |
 | `build.mjs` | Portable offline build |
 
-Tests cover vehicle dynamics and collision damage, model deformation and exact repair, terrain and roadway displacement, and destructible scenery. GitHub Actions runs the tests and verifies that the committed offline build matches the source.
+Tests run 180-second autonomous races on all 15 circuits and cover vehicle dynamics and collision damage, model deformation and exact repair, terrain and roadway displacement, and destructible scenery. GitHub Actions runs the tests and verifies that the committed offline build matches the source.
 
 ## Reference
 

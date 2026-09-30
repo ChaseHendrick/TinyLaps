@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // A small model-making kit. Static pieces are baked together by material so
 // trees, roof tiles, window frames and flower patches stay inexpensive to draw.
-export function buildScenery({ group, theme = 'harbor', samples, seed = 17 }) {
+export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme === 'harbor', samples, seed = 17 }) {
   const palettes = {
     harbor: { grass: '#9caf83', dark: '#50766b', leaf: '#78987a', light: '#bac89b', roof: '#bd775f', roof2: '#667e8b', wall: '#f3e6ca', wall2: '#dfb798', accent: '#e29c76', pond: '#83beb8', hill: '#96ad83' },
     alpine: { grass: '#98ad89', dark: '#4e776e', leaf: '#709382', light: '#b1c399', roof: '#967365', roof2: '#627b82', wall: '#f0e5ce', wall2: '#c7bda4', accent: '#d9a17e', pond: '#8bbdc1', hill: '#9bac8e' },
@@ -94,7 +94,7 @@ export function buildScenery({ group, theme = 'harbor', samples, seed = 17 }) {
   function clear(x, z, radius = 1, extra = 0) {
     return (x * x / (60 * 60) + z * z / (43 * 43) < .93)
       && distanceToRoad(x, z) > 6.5 + radius
-      && (theme !== 'harbor' || distanceToRiver(x, z) > 4 + radius)
+      && (!hasRiver || distanceToRiver(x, z) > 4 + radius)
       && !occupied.some(o => Math.hypot(x - o.x, z - o.z) < radius + o.r + extra);
   }
   function reserve(x, z, radius) { occupied.push({ x, z, r: radius }); }
@@ -171,6 +171,12 @@ export function buildScenery({ group, theme = 'harbor', samples, seed = 17 }) {
     if (!clear(x, z, large ? 4.1 : 3.1)) continue;
     reserve(x, z, large ? 4.1 : 3.1);
     house(x, z, Math.atan2(-x * .08, 1) + range(-.25, .25), houseIndex++, large);
+  }
+  // Inward turns can occupy the original town center. Find a few small houses
+  // in the remaining clear pockets without putting foundations on the road.
+  for (let z=-26;z<=26&&houseIndex<5;z+=10) for (let x=-36;x<=36&&houseIndex<5;x+=12) {
+    if (!clear(x,z,3.1)) continue;
+    reserve(x,z,3.1);house(x,z,Math.atan2(-x*.08,1),houseIndex++);
   }
 
   // Hills are buried ellipsoids rather than cones; stone crests give the

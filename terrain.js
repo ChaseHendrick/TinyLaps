@@ -25,7 +25,9 @@ export class TerrainSystem {
     this.lastEdit = null;
     this.grassColor = new THREE.Color(grassColor);
     this.soilColor = new THREE.Color(sandColor).lerp(new THREE.Color(0x65503d), 0.58);
-    this.mesh = new THREE.Mesh(this._makeGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94 }));
+    // Leave a stable depth layer for beaches, paths and water above the grass.
+    // Offsets affect rendering only; physical heights and deformation stay exact.
+    this.mesh = new THREE.Mesh(this._makeGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
     this.mesh.name = 'Deformable island terrain';
     this.mesh.receiveShadow = true;
     this.mesh.castShadow = false;

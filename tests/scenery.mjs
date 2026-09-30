@@ -103,7 +103,7 @@ function disposeFixture(group) {
 
 for (const [theme, config] of Object.entries(TRACKS)) {
   const circuit = circuitFor(config), group = new THREE.Group();
-  const scenery = buildScenery({ group, theme, samples: circuit.samples, seed: 17 });
+  const scenery = buildScenery({ group, theme:config.setting||theme, river:!!config.river, samples: circuit.samples, seed:config.seed||17 });
   const pristine = snapshotGeometry(group);
   let time = 0;
   const tick = (frames, dt = 1 / 60) => {

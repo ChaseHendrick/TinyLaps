@@ -246,7 +246,7 @@ const fresh=env=>new RaceSimulation(length,sample,env);
 }
 
 console.log(JSON.stringify({ok:true,physics:'120 Hz force-based bicycle model with impulse contacts',
-  checks:['three 180-second autonomous races','finite rigid body state','rank and forward lap accounting',
+  checks:[`${Object.keys(TRACKS).length} 180-second autonomous races`,'finite rigid body state','rank and forward lap accounting',
     'friction circles','braking and weight loads','damage penalties','momentum and impact damage',
     'prompt contact separation','driver recovery','destructible environment and terrain grip',
     'held cars and impulses','ballistic vertical launches and landing','repair/reset','physics config bounds','frame-rate consistency'],circuits:reports},null,2));
