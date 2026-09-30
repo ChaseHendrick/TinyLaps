@@ -289,6 +289,23 @@ export class TerrainSystem {
     }
   }
 
+  exportState() {
+    const cells = [];
+    for (let i = 0; i < this.heights.length; i++) if (this.heights[i] || this.damage[i]) cells.push([i, this.heights[i], this.damage[i]]);
+    return { columns: this.columns, rows: this.rows, cells };
+  }
+
+  restoreState(saved) {
+    if (!saved || saved.columns !== this.columns || saved.rows !== this.rows || !Array.isArray(saved.cells) || saved.cells.length > this.heights.length) return false;
+    if (!saved.cells.every(cell => Array.isArray(cell) && cell.length === 3 && Number.isInteger(cell[0]) && cell[0] >= 0 && cell[0] < this.heights.length && Number.isFinite(cell[1]) && cell[1] >= -2.21 && cell[1] <= 3.01 && Number.isFinite(cell[2]) && cell[2] >= 0 && cell[2] <= 1)) return false;
+    this.heights.fill(0); this.damage.fill(0);
+    for (const [index, height, damage] of saved.cells) { this.heights[index] = height; this.damage[index] = damage; }
+    this.revision++;
+    this._updateSurface(null);
+    this._updateRegistered(null);
+    return true;
+  }
+
   reset() {
     this.heights.fill(0);
     this.damage.fill(0);

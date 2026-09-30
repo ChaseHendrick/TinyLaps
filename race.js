@@ -139,6 +139,8 @@ export class RaceSimulation {
     return true;
   }
 
+  strikeCar(id,impulse,magnitude){const car=this.cars[id];if(!car)return false;this.applyImpulse(id,impulse);const length=Math.hypot(impulse.x,impulse.z)||1;this._damage(car,{x:impulse.x/length,z:impulse.z/length},magnitude);return true;}
+
   teleportCar(id,x,z,heading) {
     const car = this.cars[id];
     if (!car || !Number.isFinite(x) || !Number.isFinite(z)) return false;
@@ -581,7 +583,8 @@ export class RaceSimulation {
     const { f,r } = axes(car);
     for (const obstacle of this.environment.colliders || []) {
       if (obstacle.health <= 0 || obstacle.solid === false || !(obstacle.radius > 0)) continue;
-      if (car.airborne && car.y > car.groundHeight+(obstacle.height || 1.2)) continue;
+      const base=Number.isFinite(obstacle.y)?obstacle.y:car.groundHeight;
+      if(car.y+.8<base||car.y>base+(obstacle.height||1.2))continue;
       const dx = obstacle.x-car.x, dz = obstacle.z-car.z;
       const broad = obstacle.radius + 1.2;
       if (dx*dx+dz*dz > broad*broad) continue;

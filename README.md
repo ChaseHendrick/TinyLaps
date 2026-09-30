@@ -29,7 +29,7 @@ Open the wrench in the lower right or press **D**.
 | Shockwave | Applies radial impulses to cars and breaks nearby objects and barriers. |
 | Raise / lower terrain | Sculpt the real terrain mesh and roadway. The changed height, slope, roughness and grip affect driving. |
 | Repair ground | Restores the terrain in a brush radius. |
-| Grab & throw | Pick up a racer, move it, and release it with an impulse based on your drag. |
+| Grab & throw | Choose cars, adult townspeople, buildings, trees, rocks, or landmarks. Hold to lift, release gently to drop, or flick to throw. Hard landings and collisions cause damage. |
 | Boost / spin racer | Apply a forward or off-center impulse to the selected body. |
 | Repair racer | Restore its body, engine and suspension condition. |
 | Restore whole world | Rebuild the scenery, terrain, barriers and all racers. |
@@ -37,6 +37,8 @@ Open the wrench in the lower right or press **D**.
 The **Physics** tab exposes gravity, tire grip, impact restitution, damage intensity, engine power and simulation speed. Freeze time to inspect a moment. The **Inspect** tab shows body outlines, obstacle colliders, velocity vectors, steering, throttle, braking, slip and damage.
 
 Buildings crumple into rubble, trees fall, and broken props become nonsolid. Debris uses gravity, bounce, angular motion and ground friction. Roads deform with the terrain, and segmented guardrails retain damage until the world is restored.
+
+The villages have 36 residents, including families. Adults and children walk around their homes, run from meteors, shockwaves, terrain powers, and thrown objects, then return to their routines. Adult bodies have articulated shoulders, elbows, hips, and knees, with stylized tumbles, injury, and recovery. Children remain uninjured background town life. Repair ground also restores nearby adult health.
 
 ## Controls
 
@@ -47,9 +49,12 @@ Buildings crumple into rubble, trees fall, and broken props become nonsolid. Deb
 | `+` / `−` | Zoom |
 | `Space` | Pause / resume |
 | `H` | Hide / show the main controls |
+| `G` | Pick up, drop, or throw cars, adults, and scenery |
 | `D` | Developer tools and god powers |
 | `Alt` + `M` | Open the circuit chooser |
 | `Escape` | Close god tools and return to exploration |
+
+Your current circuit and race save automatically in this browser every 2.5 seconds and when you leave. Saves retain lap progress, car damage, sculpted terrain, scenery damage and moved buildings, residents and their recovery, barriers, camera, and control settings. Reopening restores that race without advancing it while the page was closed. Restart deliberately clears race and world damage. If browser storage is unavailable, the game reports that the race is limited to the current session.
 
 Optional ambient audio starts only after you enable it. The camera button saves a postcard of the current view. Fullscreen uses the browser's fullscreen feature.
 
@@ -57,7 +62,7 @@ Optional ambient audio starts only after you enable it. The camera button saves 
 
 The scene is procedurally modeled with Three.js. The camera adjusts its near plane for wide views, and decorative surface layers use explicit depth offsets to keep beaches, paint and water stable as the camera moves. These rendering offsets do not change the physical terrain height. Vehicles use a fixed 120 Hz simulation with finite mass and yaw inertia, front and rear tire slip, friction limits shared between steering and braking, longitudinal weight transfer, engine force, drag, braking and surface friction. Autonomous drivers steer, choose passing lines, defend positions, plan braking and recover from mistakes.
 
-Car contacts use oriented rectangles, contact impulses, angular response, friction and penetration correction. Throws and shockwaves can launch cars into ballistic flight, with gravity, air drag, height-aware contacts and landing damage. Tire forces stop while a car is airborne. Static scenery uses approximate circular colliders. Impact severity accumulates directional body damage and reduces engine power, tire stiffness and grip. World damage shares the vehicle simulation's surface and obstacle data.
+Car contacts use oriented rectangles, contact impulses, angular response, friction and penetration correction. Throws and shockwaves can launch cars into ballistic flight, with gravity, air drag, height-aware contacts and landing damage. Tire forces stop while a car is airborne. Scenery uses approximate circular colliders. Grabbed buildings and props move under gravity, collide with scenery and cars, and collapse into bounded debris after hard impacts. Pedestrians use a walkable path graph with simple body trajectories and joint poses. Impact severity accumulates directional body damage and reduces engine power, tire stiffness and grip. World damage shares the vehicle simulation's surface and obstacle data.
 
 This is a stylized physics model for a miniature world. It is not calibrated to a particular real vehicle, and the procedural panel deformation is not a finite element or soft-body crash simulation. Terrain is a bounded height field, so it supports craters and hills rather than caves or arbitrary topology. Decorative hills and water are scenery; buildings and trees have simplified colliders. Debris has its own gravity and ground contact model.
 
@@ -80,10 +85,13 @@ Open `http://127.0.0.1:8765`. The local server command requires Python 3. Rebuil
 | `scenery.js` | Village, vegetation, animation, destructible props and debris |
 | `terrain.js` | Mutable height field, road deformation and surface sampling |
 | `devtools.js` | God tools, physics controls and live inspection |
+| `pedestrians.js` | Instanced residents, family routines, reactions, and stylized ragdolls |
+| `grab.js` | Pointer motion converted to a bounded throw velocity |
+| `persistence.js` | Validated browser saves and restoration |
 | `tracks.js` | Shared circuit definitions |
 | `build.mjs` | Portable offline build |
 
-Tests run 180-second autonomous races on all 15 circuits and cover vehicle dynamics and collision damage, model deformation and exact repair, terrain and roadway displacement, and destructible scenery. GitHub Actions runs the tests and verifies that the committed offline build matches the source.
+Tests run 180-second autonomous races on all 15 circuits and cover vehicle dynamics and collision damage, model deformation and exact repair, terrain and roadway displacement, destructible scenery, family reactions, adult throws and recovery, movable building damage, and save restoration. GitHub Actions runs the tests and verifies that the committed offline build matches the source.
 
 ## Reference
 

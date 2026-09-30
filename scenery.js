@@ -32,6 +32,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
   const props = new Map();
   let activeProp = null;
   let previousTime = 0;
+  let getVehicles=()=>[], strikeVehicle=()=>{}, disturbance=()=>{};
   const physics = { gravity: 9.81, restitution: .26 };
   let groundSampler = (x, z) => x * x / (64 * 64) + z * z / (47 * 47) < 1 ? 0 : -3;
   const dynamic = new THREE.Group();
@@ -39,7 +40,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
 
   function createProp(kind, x, z, radius, mass, height) {
     const collider = { id: `${theme}-${kind}-${colliders.length}`, x, y: 0, z, radius, health: 1, mass, height, kind, solid: true };
-    const prop = { collider, ranges: [], dynamic: [], angle: 0, angularVelocity: 0, collapse: 0, collapseVelocity: 0, directionX: 1, directionZ: 0, damage: 0, dirty: false, settled: false };
+    const prop = { collider, origin:{x,y:0,z}, held:false,moving:false,vx:0,vy:0,vz:0,cooldown:0, ranges: [], dynamic: [], angle: 0, angularVelocity: 0, collapse: 0, collapseVelocity: 0, directionX: 1, directionZ: 0, damage: 0, dirty: false, settled: false };
     colliders.push(collider); props.set(collider.id, prop); return prop;
   }
   function attachDynamic(prop, object) {
@@ -417,7 +418,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
 
   function sailboat(x, z, yaw, color, phase) {
     const boat = new THREE.Group(); boat.name = 'Sailboat'; boat.position.set(x, -3, z); boat.rotation.y = yaw; dynamic.add(boat);
-    const boatProp = createProp('boat', x, z, 2.65, 450, 4.6); boatProp.collider.y = -3; attachDynamic(boatProp, boat);
+    const boatProp = createProp('boat', x, z, 2.65, 450, 4.6); boatProp.collider.y = -3; boatProp.origin.y = -3; attachDynamic(boatProp, boat);
     const hullGeometry = new THREE.SphereGeometry(1, 28, 14);
     const hullPositions = hullGeometry.attributes.position;
     for (let i = 0; i < hullPositions.count; i++) {
@@ -524,7 +525,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
       const direction = range(-Math.PI, Math.PI), radial = range(.15, collider.radius * .85);
       debris.push({
         type: isWood ? 0 : 1, x: collider.x + Math.cos(direction) * radial, z: collider.z + Math.sin(direction) * radial,
-        y: groundSampler(collider.x, collider.z) + range(.45, Math.min(3, collider.height * .65)),
+        y: collider.y + groundSampler(collider.x, collider.z) + range(.45, Math.min(3, collider.height * .65)),
         vx: prop.directionX * speed * .55 + Math.cos(direction) * range(1, speed), vz: prop.directionZ * speed * .55 + Math.sin(direction) * range(1, speed), vy: range(1.2, 4.8),
         rx: range(0, 6), ry: range(0, 6), rz: range(0, 6), wx: range(-4, 4), wy: range(-4, 4), wz: range(-4, 4),
         size, radius: (isWood ? .18 : .43) * size, mass: collider.mass / Math.max(8, count * 3), restitution: isWood ? .31 : .22, friction: isWood ? .67 : .80,
@@ -544,7 +545,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
       const normals = range.mesh.geometry.attributes.normal;
       const colors = range.mesh.geometry.attributes.color;
       for (let i = 0; i < range.positions.length; i += 3) {
-        const x = range.positions[i] - c.x, y = range.positions[i + 1] - c.y, z = range.positions[i + 2] - c.z;
+        const x = range.positions[i] - prop.origin.x, y = range.positions[i + 1] - prop.origin.y, z = range.positions[i + 2] - prop.origin.z;
         const level = THREE.MathUtils.clamp(y / Math.max(1, c.height), 0, 1);
         point.set(x * spread, y * heightScale, z * spread);
         if (!isTree) {
@@ -568,7 +569,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
       changedMeshes.add(range.mesh);
     }
     for (const item of prop.dynamic) {
-      point.copy(item.position).sub(new THREE.Vector3(c.x, c.y, c.z));
+      point.copy(item.position).sub(new THREE.Vector3(prop.origin.x, prop.origin.y, prop.origin.z));
       point.x *= spread; point.y *= heightScale; point.z *= spread; point.applyQuaternion(tilt);
       item.object.position.set(c.x + point.x, c.y + point.y, c.z + point.z);
       item.object.quaternion.copy(tilt).multiply(item.quaternion);
@@ -614,10 +615,52 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
     }
     return impacts;
   }
+  function pickProp(hit){
+    if(!hit?.object)return null;
+    for(const prop of props.values()){
+      if(prop.ranges.some(r=>r.mesh===hit.object&&hit.face&&hit.face.a>=r.start&&hit.face.a<r.start+r.count))return prop.collider;
+      for(const item of prop.dynamic){let object=hit.object;while(object){if(object===item.object)return prop.collider;object=object.parent;}}
+    }
+    return null;
+  }
+  function liftProp(id,height){const prop=props.get(id);if(!prop||!Number.isFinite(height))return false;prop.held=true;prop.moving=true;prop.collider.held=true;prop.collider.y=height;prop.vx=prop.vy=prop.vz=0;prop.dirty=true;renderProp(prop);updatePhysics(0);return prop.collider;}
+  function moveProp(id,x,z,y){const prop=props.get(id);if(!prop?.held||![x,z,y].every(Number.isFinite))return false;Object.assign(prop.collider,{x,z,y});prop.dirty=true;renderProp(prop);updatePhysics(0);return true;}
+  function releaseProp(id,velocity){const prop=props.get(id);if(!prop?.held)return false;prop.held=false;prop.collider.held=false;prop.moving=true;for(const [key,value] of Object.entries({vx:velocity.x,vy:velocity.y,vz:velocity.z}))prop[key]=Number.isFinite(value)?THREE.MathUtils.clamp(value,-35,35):0;return true;}
+  function translateProp(prop,step){
+    const c=prop.collider;if(prop.held||!prop.moving||step<=0)return;
+    const substeps=Math.max(1,Math.ceil(step/.016)),dt=step/substeps;
+    for(let i=0;i<substeps;i++){
+      prop.cooldown=Math.max(0,prop.cooldown-dt);prop.vy-=physics.gravity*dt;prop.vx*=Math.exp(-dt*.2);prop.vz*=Math.exp(-dt*.2);
+      c.x+=prop.vx*dt;c.y+=prop.vy*dt;c.z+=prop.vz*dt;prop.dirty=true;
+      for(const other of colliders){
+        if(other===c||other.health<=0||other.held||c.y>other.y+other.height||c.y+c.height<other.y)continue;
+        const dx=c.x-other.x,dz=c.z-other.z,d=Math.hypot(dx,dz),radius=c.radius+other.radius;
+        if(d>=radius)continue;const nx=dx/(d||1),nz=dz/(d||1),closing=-(prop.vx*nx+prop.vz*nz);
+        c.x=other.x+nx*(radius+.03);c.z=other.z+nz*(radius+.03);
+        if(closing>1&&prop.cooldown===0){const energy=.5*c.mass*closing*closing;applyImpact(c.id,{energy:energy*.45,severity:closing/12,vx:prop.vx,vz:prop.vz});applyImpact(other.id,{energy:energy*.45,severity:closing/12,vx:prop.vx,vz:prop.vz});disturbance(c.x,c.z,c.radius+7,closing);prop.cooldown=.12;}
+        if(closing>0){prop.vx+=nx*closing*(1+physics.restitution);prop.vz+=nz*closing*(1+physics.restitution);}
+      }
+      for(const car of getVehicles()){
+        const dx=car.x-c.x,dz=car.z-c.z,d=Math.hypot(dx,dz);
+        if(car.held||d>c.radius+1||car.y+.8<c.y||car.y>c.y+c.height)continue;
+        const nx=dx/(d||1),nz=dz/(d||1),closing=(prop.vx-car.vx)*nx+(prop.vz-car.vz)*nz;
+        if(closing>1){const impulse=closing*(1+physics.restitution)/(1/c.mass+1/car.mass);strikeVehicle(car.id,{x:nx*impulse,z:nz*impulse},impulse);prop.vx-=nx*impulse/c.mass;prop.vz-=nz*impulse/c.mass;applyImpact(c.id,{energy:.5*impulse*closing,severity:closing/15,vx:prop.vx,vz:prop.vz});disturbance(c.x,c.z,c.radius+7,closing);}
+      }
+      const floor=groundSampler(c.x,c.z);
+      if(c.y<floor){
+        c.y=floor;const speed=Math.abs(prop.vy);
+        if(speed>3){applyImpact(c.id,{energy:.5*c.mass*speed*speed*.12,severity:speed/20,vx:prop.vx,vz:prop.vz});disturbance(c.x,c.z,c.radius+7,speed);}
+        prop.vy=speed>1?speed*physics.restitution:0;prop.vx*=.65;prop.vz*=.65;
+        if(Math.hypot(prop.vx,prop.vz)<.18&&prop.vy<.3){prop.moving=false;prop.vx=prop.vy=prop.vz=0;}
+      }
+    }
+  }
   function updatePhysics(dt) {
     const step = Math.min(.10, Math.max(0, dt));
     for (const prop of props.values()) {
       const c = prop.collider;
+      translateProp(prop,step);
+      if(prop.dynamic.length&&Math.hypot(c.x-prop.origin.x,c.y-prop.origin.y,c.z-prop.origin.z)>.001)prop.dirty=true;
       if (c.health === 1 && !prop.dirty) continue;
       if (c.kind === 'tree') {
         const previousAngle = prop.angle;
@@ -639,7 +682,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
       }
       if (prop.dirty) renderProp(prop);
     }
-    for (const mesh of changedMeshes) { mesh.geometry.attributes.position.needsUpdate = true; mesh.geometry.attributes.normal.needsUpdate = true; if (mesh.geometry.attributes.color) mesh.geometry.attributes.color.needsUpdate = true; }
+    for (const mesh of changedMeshes) { mesh.geometry.attributes.position.needsUpdate = true; mesh.geometry.attributes.normal.needsUpdate = true; if (mesh.geometry.attributes.color) mesh.geometry.attributes.color.needsUpdate = true; mesh.geometry.computeBoundingSphere(); }
     changedMeshes.clear();
     const counts = [0, 0];
     for (const body of debris) {
@@ -666,7 +709,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
   }
   function reset() {
     debris.length = 0;
-    for (const prop of props.values()) { prop.collider.health = 1; prop.collider.solid = true; prop.damage = prop.angle = prop.angularVelocity = prop.collapse = prop.collapseVelocity = 0; prop.settled = false; prop.dirty = true; renderProp(prop); }
+    for (const prop of props.values()) { Object.assign(prop.collider,prop.origin,{held:false});prop.held=prop.moving=false;prop.vx=prop.vy=prop.vz=prop.cooldown=0;prop.collider.health = 1; prop.collider.solid = true; prop.damage = prop.angle = prop.angularVelocity = prop.collapse = prop.collapseVelocity = 0; prop.settled = false; prop.dirty = true; renderProp(prop); }
     updatePhysics(0);
   }
   const update = (time, dt = Math.max(0, time - previousTime)) => {
@@ -686,5 +729,39 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
       const height = fn(x, z); return Number.isFinite(height) ? height : 0;
     };
   };
-  return { update, colliders, applyImpact, damageAt, reset, configurePhysics, setGroundSampler, get debrisCount() { return debris.length; } };
+  function exportState() {
+    return {
+      props: [...props.values()].filter(prop => prop.collider.health < 1 || prop.moving || Math.hypot(prop.collider.x-prop.origin.x,prop.collider.y-prop.origin.y,prop.collider.z-prop.origin.z)>.001).map(prop => ({ id: prop.collider.id, health: prop.collider.health, x:prop.collider.x,y:prop.collider.y,z:prop.collider.z,moving:prop.moving,vx:prop.vx,vy:prop.vy,vz:prop.vz, ...Object.fromEntries(['angle', 'angularVelocity', 'collapse', 'collapseVelocity', 'directionX', 'directionZ', 'settled'].map(key => [key, prop[key]])) })),
+      debris: debris.map(body => ({ ...body, color: body.color.getHex() })),
+    };
+  }
+  function restoreState(saved) {
+    if (!saved || !Array.isArray(saved.props) || saved.props.length > props.size) return false;
+    for (const item of saved.props) {
+      const prop = props.get(item?.id);
+      if (!prop || !Number.isFinite(item.health)) continue;
+      prop.collider.health = THREE.MathUtils.clamp(item.health, 0, 1);
+      prop.collider.solid = prop.collider.health > 0;
+      for(const key of ['x','y','z'])if(Number.isFinite(item[key])&&Math.abs(item[key])<500)prop.collider[key]=item[key];
+      for(const key of ['vx','vy','vz'])if(Number.isFinite(item[key])&&Math.abs(item[key])<=35)prop[key]=item[key];
+      prop.held=false;prop.collider.held=false;prop.moving=item.moving===true;
+      prop.damage = 1 - prop.collider.health;
+      for (const key of ['angle', 'angularVelocity', 'collapse', 'collapseVelocity', 'directionX', 'directionZ']) if (Number.isFinite(item[key]) && Math.abs(item[key]) < 100) prop[key] = item[key];
+      prop.settled = item.settled === true;
+      prop.dirty = true;
+      renderProp(prop);
+    }
+    if (Array.isArray(saved.debris)) {
+      const keys = ['type','x','y','z','vx','vy','vz','rx','ry','rz','wx','wy','wz','size','radius','mass','restitution','friction'];
+      for (const item of saved.debris.slice(0, 80)) {
+        if (!item || !keys.every(key => Number.isFinite(item[key]) && Math.abs(item[key]) < 1e6) || !Number.isInteger(item.color)) continue;
+        debris.push({ ...Object.fromEntries(keys.map(key => [key, item[key]])), color: new THREE.Color(item.color & 0xffffff), sleeping: item.sleeping === true });
+      }
+    }
+    updatePhysics(0);
+    return true;
+  }
+  const pedestrianHomes = colliders.filter(c=>c.kind==='building').map(c=>({x:c.x,z:c.z,radius:c.radius}));
+  const isWalkable = (x,z) => clear(x,z,.28,-.1)&&colliders.every(c=>!c.solid||c.held||c.y>1.5||Math.hypot(c.x-x,c.z-z)>c.radius+.3);
+  return { update, colliders, pickProp, liftProp, moveProp, releaseProp, setInteractionHandlers:({vehicles,strike,react})=>{getVehicles=vehicles;strikeVehicle=strike;disturbance=react;}, applyImpact, damageAt, reset, configurePhysics, setGroundSampler, exportState, restoreState, pedestrianHomes, isWalkable, get debrisCount() { return debris.length; } };
 }
