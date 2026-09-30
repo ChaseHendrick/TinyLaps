@@ -5,27 +5,7 @@ import { TRACKS } from '../tracks.js';
 
 const mod = (x,n) => ((x%n)+n)%n;
 
-// Match the app's arc-length sampler, including bridge-height clamping.
-function buildTrack(points) {
-  const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)),true,'centripetal');
-  curve.arcLengthDivisions=4000;
-  curve.updateArcLengths();
-  const length=curve.getLength(),samples=[];
-  for(let i=0;i<1800;i++) {
-    const u=i/1800,p=curve.getPointAt(u),t=curve.getTangentAt(u);
-    const a=curve.getTangentAt(mod(u-.002,1)),b=curve.getTangentAt(mod(u+.002,1));
-    if(p.y<.17) {p.y=.17;t.y=0;}
-    samples.push({x:p.x,y:p.y,z:p.z,tx:t.x,tz:t.z,ty:t.y,
-      curvature:Math.atan2(a.x*b.z-a.z*b.x,a.x*b.x+a.z*b.z)/(length*.004)});
-  }
-  const sampleAtDistance=distance=>{
-    const q=mod(distance,length)/length*1800,i=Math.floor(q),f=q-i;
-    const a=samples[i],b=samples[(i+1)%1800],p={};
-    for(const key of Object.keys(a))p[key]=a[key]+(b[key]-a[key])*f;
-    const norm=Math.hypot(p.tx,p.tz);p.tx/=norm;p.tz/=norm;return p;
-  };
-  return {length,samples,sampleAtDistance};
-}
+import { buildTrack } from '../track.js';
 
 // Independent polygon SAT check against the physical heading, rather than the
 // track tangent. A small solver slop is allowed at the instant of a contact.
@@ -54,7 +34,7 @@ function penetration(a,b) {
 
 const reports=[];
 for(const [key,cfg] of Object.entries(TRACKS)) {
-  const track=buildTrack(cfg.points);
+  const track=buildTrack(cfg);
   const sim=new RaceSimulation(track.length,track.sampleAtDistance);
   let maxPenetration=0,maxLane=0,maxStoppedDuration=0;
   const stopped=Array(10).fill(0),overlapDurations=new Map();

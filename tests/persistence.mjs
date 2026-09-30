@@ -48,3 +48,19 @@ const bad = structuredClone(save);bad.cars[0].x=Infinity;assert.equal(restoreRac
 assert.equal(restored.terrain.restoreState({columns:160,rows:120,cells:[[999999,0,0]]}),false);
 assert.throws(()=>writeRace({setItem(){throw new Error('Quota exceeded')}},original),/Quota/);
 console.log('Save checks passed: race position and laps, damage, physics, terrain, scenery, debris, barriers, view settings, malformed data, and unavailable storage.');
+
+// A city route revision cannot restore cars onto the retired outer circuit.
+const revised=world();revised.sim.environment.routeRevision=2;
+const newGrid=revised.sim.cars.map(c=>({x:c.x,z:c.z,progress:c.progress}));
+assert(restoreRace({...save,routeRevision:1},revised));
+assert(revised.sim.migratedRoute);
+assert.equal(revised.sim.elapsed,0);
+assert.deepEqual(revised.sim.cars.map(c=>({x:c.x,z:c.z,progress:c.progress})),newGrid);
+assert.equal(revised.sim.cars[4].damage.engine,.42);
+assert.deepEqual(revised.terrain.exportState(),original.terrain.exportState());
+assert.deepEqual(revised.scenery.exportState().props,original.scenery.exportState().props);
+const revisedSave={...save,routeRevision:2};
+assert(restoreRace(revisedSave,revised));
+assert(!revised.sim.migratedRoute);
+assert.equal(revised.sim.cars[4].progress,save.cars[4].progress);
+console.log('Route migration preserves the world and damage without restoring racers outside the new city streets.');

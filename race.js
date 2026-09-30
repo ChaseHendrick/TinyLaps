@@ -75,6 +75,8 @@ export class RaceSimulation {
     this.events = [];
     this._eventId = 0;
     this._contacts = new Map();
+    this._sensedTraffic = [];
+    this._senseTrafficAt = 0;
     this.cars = CAR_PROFILES.map((profile, id) => {
       const progress = -1.5 - Math.floor(id / 2) * 3.55 - (id % 2) * .20;
       const lane = id % 2 ? 1.15 : -1.15;
@@ -102,7 +104,7 @@ export class RaceSimulation {
         bank:0, wheelAngle:0, damage:{ total:0, front:0, rear:0, left:0, right:0,
           engine:0, suspension:0 }, impacts:0,
         laneCooldown:1 + id * .12, laneHoldUntil:0, reverseUntil:0,
-        stuckTime:0, lastPassAt:-10, lastImpactAt:-10, held:false,
+        stuckTime:0, trafficWait:0, lastPassAt:-10, lastImpactAt:-10, held:false,
       };
     });
     this.setAggression(this.aggression);
@@ -219,11 +221,27 @@ export class RaceSimulation {
     return gap > this.trackLength * .5 ? gap - this.trackLength : gap;
   }
 
+  _senseTraffic() {
+    if (this.elapsed < this._senseTrafficAt) return;
+    this._senseTrafficAt = this.elapsed + .1;
+    this._sensedTraffic = (this.environment.vehicles?.() || []).filter(c=>!c.held&&!c.airborne).map(c=>{
+      const p = this._project({...c,distance:0},true);
+      // Measure the local car's actual footprint across the race route. Curb
+      // traffic can be clear of a racing lane even while its center is nearby.
+      const lateralExtent = Math.abs(Math.sin(c.heading)*-p.tz+Math.cos(c.heading)*p.tx)*.83
+        + Math.abs(Math.cos(c.heading)*-p.tz-Math.sin(c.heading)*p.tx)*.43;
+      return {...c,distance:p.distance,lane:p.lane,targetLane:p.lane,
+        speed:c.vx*p.tx+c.vz*p.tz,routeTraffic:true,lateralExtent};
+    });
+  }
+
   _front(car, lane = car.lane) {
     let other = null;
     let gap = Infinity;
-    for (const candidate of this.cars) {
-      if (candidate === car || Math.abs(candidate.lane - lane) > 1.25) continue;
+    for (const candidate of [...this.cars,...this._sensedTraffic]) {
+      if (candidate.routeTraffic && Math.hypot(candidate.x-car.x,candidate.z-car.z)>25) continue;
+      const clearance = candidate.routeTraffic ? candidate.lateralExtent+CAR_WIDTH*.5+.03 : 1.25;
+      if (candidate === car || Math.abs(candidate.lane - lane) > clearance) continue;
       const distance = mod(candidate.distance - car.distance, this.trackLength);
       if (distance < gap) { gap = distance; other = candidate; }
     }
@@ -231,15 +249,19 @@ export class RaceSimulation {
   }
 
   _clearLane(car, target) {
-    for (const other of this.cars) {
+    for (const other of [...this.cars,...this._sensedTraffic]) {
+      if (other.routeTraffic && Math.hypot(other.x-car.x,other.z-car.z)>25) continue;
       if (other === car) continue;
       const gap = this._signedGap(car, other);
-      const sweptMin = Math.min(car.lane,target)-.65;
-      const sweptMax = Math.max(car.lane,target)+.65;
+      const clearance = other.routeTraffic ? other.lateralExtent+CAR_WIDTH*.5+.03 : 1.25;
+      const sweptExtent = other.routeTraffic ? clearance : .65;
+      const sweptMin = Math.min(car.lane,target)-sweptExtent;
+      const sweptMax = Math.max(car.lane,target)+sweptExtent;
       if (gap > -2.6 && gap < 3.2 && other.lane > sweptMin && other.lane < sweptMax) return false;
       const lateral = Math.abs(other.lane - target);
+      if (other.routeTraffic && other.speed < 0 && lateral < clearance && gap > -2.6 && gap < 13) return false;
       const targetDifference = Math.abs(other.targetLane - target);
-      if (Math.min(lateral, targetDifference) > 1.25) continue;
+      if (Math.min(lateral, targetDifference) > clearance) continue;
       const rearBuffer = 2.8 + Math.max(0, other.speed - car.speed) * (.75 - car.aggression * .25);
       if (gap > -rearBuffer && gap < 3.1 - car.aggression * .35) return false;
     }
@@ -301,14 +323,16 @@ export class RaceSimulation {
     const baseGrip = 1.12 * damageGrip * this.physics.grip;
     const bravery = .65 + .20 * car.personality.bravery + .055 * car.aggression;
     const brakingRoom = 4.1 + car.aggression * 1.4;
-    let desiredSpeed = car.profile.topSpeed * (1 - car.damage.engine * .45);
+    let desiredSpeed = Math.min(this.environment.speedLimit || Infinity,
+      car.profile.topSpeed * (1 - car.damage.engine * .45));
     let worstCurvature = Math.abs(car.curvature);
     for (const ahead of [0, 2, 4, 7, 11, 17, 25]) {
       const p = this._sample(car.distance + ahead);
       const radiusFactor = Math.max(.48, 1 - p.curvature * car.targetLane);
       const curvature = Math.abs(p.curvature) / radiusFactor;
       worstCurvature = Math.max(worstCurvature, curvature);
-      const bendSpeed = Math.sqrt(baseGrip * this.physics.gravity / Math.max(.005,curvature)) * bravery;
+      const bendSpeed = Math.sqrt(baseGrip * this.physics.gravity / Math.max(.005,curvature)) * bravery
+        * (this.environment.cornerSafety || 1);
       const permitted = Math.sqrt(bendSpeed ** 2 + 2 * brakingRoom * Math.max(0,ahead - .8));
       desiredSpeed = Math.min(desiredSpeed, permitted);
     }
@@ -323,7 +347,11 @@ export class RaceSimulation {
     if (recovering) desiredSpeed = Math.min(desiredSpeed, 5.2);
     if (Math.abs(headingError) > .65) desiredSpeed = Math.min(desiredSpeed, 6.5);
 
-    car.stuckTime = car.speed < .65 && this.elapsed > 3 ? car.stuckTime + dt : 0;
+    const waitingForTraffic = localFront.car && localFront.gap < 7 && desiredSpeed < 1.2
+      && Math.abs(headingError) < .65;
+    car.trafficWait = waitingForTraffic ? (car.trafficWait || 0) + dt : 0;
+    car.stuckTime = car.speed < .65 && this.elapsed > 3 && (!waitingForTraffic || car.trafficWait > 2)
+      ? car.stuckTime + dt : 0;
     if ((Math.abs(headingError) > 1.8 || car.stuckTime > 2.4) && car.speed < 1.8
       && this.elapsed > car.reverseUntil + 1.0) {
       car.reverseUntil = this.elapsed + 1.25;
@@ -356,6 +384,7 @@ export class RaceSimulation {
     if (!reversing && u < -.8) { car.throttle = 0; car.brake = .65; }
     if (car.slip > .55 && !reversing) car.throttle *= .4;
     if (recovering || reversing) car.intent = 'Recovering';
+    else if (waitingForTraffic) car.intent = 'Waiting for traffic';
     else if (car.passing || (catching && Math.abs(car.lane - car.targetLane) > .5)) car.intent = 'Overtaking';
     else if (car.brake > .15) car.intent = car.aggression > .87 ? 'Late braking' : 'Braking';
     else if (worstCurvature > .045) car.intent = 'Cornering';
@@ -664,6 +693,7 @@ export class RaceSimulation {
 
   _step(dt) {
     const startTime = this.elapsed;
+    this._senseTraffic();
     for (const car of this.leaderboard) if (!car.held) this._driver(car,dt);
     for (const car of this.cars) if (!car.held) this._integrate(car,dt);
     this.elapsed += dt;

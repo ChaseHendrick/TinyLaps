@@ -1,6 +1,6 @@
 # Tiny Laps
 
-A little world, always in motion. Ten autonomous racers compete around smooth miniature island circuits, with close-up cameras, aggressive driving personalities, collision damage, destructible scenery and terrain, and a developer control room.
+A little world, always in motion. Ten autonomous racers compete through city streets and around miniature island circuits, with close-up cameras, aggressive driving personalities, collision damage, destructible scenery and terrain, and a developer control room.
 
 **[Watch the race](https://chasehendrick.github.io/TinyLaps/)**
 
@@ -11,6 +11,7 @@ Open `index.html` directly in a modern browser. It is a portable offline build w
 ## Explore
 
 - Choose among **18 worlds: 15 circuits and 3 dense cities** with miniature route previews. The chooser freezes the race while open, then restores your previous pause state.
+- **Foundry City, Old Quarter and Garden Metro** send the ten racers through downtown and neighborhood streets, with rounded junction turns and local traffic. Foundry is the starting world for new visitors.
 - **Pebble Bay, Clover Hills and Sundown Valley** retain the original coastal, hill and evening worlds.
 - **Meadow Oval, Orchard Square, Crescent Cove, Fern Switchbacks, Lantern Point, Lucky Clover, Seabreeze Sprint, Highland Ribbon, Lagoon Keyhole, Amber Chicane, Summit Loop and Dusk Run** add twelve different centerlines, including long straights, linked bends, narrow loops and elevated sections.
 - Drag to orbit, scroll or pinch to zoom, and use the zoom buttons for close views.
@@ -54,7 +55,7 @@ The villages have 36 residents, including families. Adults and children walk aro
 | `Alt` + `M` | Open the circuit chooser |
 | `Escape` | Close god tools and return to exploration |
 
-Your current circuit and race save automatically in this browser every 2.5 seconds and when you leave. Saves retain lap progress, car damage, sculpted terrain, scenery damage and moved buildings, residents and their recovery, barriers, city traffic, water flow, camera, and control settings. Reopening restores that race without advancing it while the page was closed. Restart deliberately clears race and world damage. If browser storage is unavailable, the game reports that the race is limited to the current session.
+Your current circuit and race save automatically in this browser every 2.5 seconds and when you leave. Saves retain lap progress, car damage, sculpted terrain, scenery damage and moved buildings, residents and their recovery, barriers, city traffic, water flow, camera, and control settings. Reopening restores that race without advancing it while the page was closed. An older city save keeps its world changes and car damage when a route revision moves racers onto the new streets; lap timing restarts for the revised course. Restart deliberately clears race and world damage. If browser storage is unavailable, the game reports that the race is limited to the current session.
 
 Optional ambient audio starts only after you enable it. The camera button saves a postcard of the current view. Fullscreen uses the browser's fullscreen feature.
 
@@ -89,6 +90,7 @@ Open `http://127.0.0.1:8765`. The local server command requires Python 3. Rebuil
 | `grab.js` | Pointer motion converted to a bounded throw velocity |
 | `persistence.js` | Validated browser saves and restoration |
 | `tracks.js` | Shared circuit definitions |
+| `track.js` | Rounded street routes and island circuit sampling |
 | `build.mjs` | Portable offline build |
 
 Tests run 180-second autonomous races on all 18 worlds and cover vehicle dynamics and collision damage, model deformation and exact repair, terrain and roadway displacement, destructible scenery, family reactions, adult throws and recovery, movable building damage, and save restoration. GitHub Actions runs the tests and verifies that the committed offline build matches the source.
@@ -101,4 +103,4 @@ Third-party licensing is recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICE
 
 ## City districts
 
-Foundry City, Old Quarter, and Garden Metro add 84 to 114 buildings, 25 to 30 connected intersections, 24 to 28 local vehicles, parks, crossings, signals, and 108 residents per world. These are original fictional districts rather than maps of real places. Local traffic follows the road graph, obeys phased signals, and can reroute when a queue remains blocked. Its cars share the grab and throw controls.
+Foundry City, Old Quarter, and Garden Metro add 84 to 114 buildings, 25 to 30 connected intersections, 24 to 28 local vehicles, parks, crossings, signals, and 108 residents per world. These are original fictional districts rather than maps of real places. Local traffic follows the road graph, makes continuous junction turns, obeys phased signals, and can reroute when a queue remains blocked. Junction reservations and vehicle footprints keep local cars from overlapping. Local cars yield at the curb to approaching racers; real contacts transfer momentum and damage. Its cars share the grab and throw controls.

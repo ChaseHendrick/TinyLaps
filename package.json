@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node tests/physics.mjs && node tests/models.mjs && node tests/terrain.mjs && node tests/scenery.mjs && node tests/persistence.mjs && node tests/world-interactions.mjs && node tests/city-water.mjs",
+    "test": "node tests/physics.mjs && node tests/models.mjs && node tests/terrain.mjs && node tests/scenery.mjs && node tests/persistence.mjs && node tests/world-interactions.mjs && node tests/city-water.mjs && node tests/city-races.mjs",
     "start": "python3 -m http.server 8765 --bind 127.0.0.1"
   },
   "dependencies": {

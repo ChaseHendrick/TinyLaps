@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CAR_LENGTH,CAR_WIDTH } from './race.js';
 
 const clamp=THREE.MathUtils.clamp;
 export function segmentDistance(x,z,a,b){const dx=b.x-a.x,dz=b.z-a.z,t=clamp(((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz),0,1);return Math.hypot(x-a.x-dx*t,z-a.z-dz*t);}
@@ -49,44 +50,121 @@ export function buildCityRoads({group,plan,terrain}){
 }
 
 /** Small local traffic on a connected graph, with signals, following distances, and recoverable throws. */
+const trafficLength=1.66,trafficWidth=.86;
+function trafficContact(a,b){
+  if(Math.abs(a.y-b.y)>.85)return null;
+  const dx=b.x-a.x,dz=b.z-a.z;if(dx*dx+dz*dz>12)return null;
+  const basis=c=>[{x:Math.sin(c.heading),z:Math.cos(c.heading)},{x:Math.cos(c.heading),z:-Math.sin(c.heading)}];
+  const aa=basis(a),bb=basis(b),size=c=>c.id<10?[CAR_LENGTH,CAR_WIDTH]:[trafficLength,trafficWidth],as=size(a),bs=size(b);
+  let depth=Infinity,normal;
+  for(const axis of [...aa,...bb]){
+    const projection=dx*axis.x+dz*axis.z;
+    const extent=(axes,s)=>Math.abs(axis.x*axes[0].x+axis.z*axes[0].z)*s[0]/2+Math.abs(axis.x*axes[1].x+axis.z*axes[1].z)*s[1]/2;
+    const overlap=extent(aa,as)+extent(bb,bs)-Math.abs(projection);
+    if(overlap<=0)return null;
+    if(overlap<depth){depth=overlap;const sign=projection<0?-1:1;normal={x:axis.x*sign,z:axis.z*sign};}
+  }
+  return {depth,normal};
+}
 export class CityTraffic {
   constructor({plan,count=28,seed=17,groundAt=()=>0,obstacles=()=>[],strike=()=>{}}){
-    Object.assign(this,{plan,seed:seed>>>0,groundAt,obstacles,strike,clock:0});this.cars=[];
-    for(let i=0;i<count;i++){const edge=plan.edges[i%plan.edges.length],reverse=i%2===1,a=reverse?edge.b:edge.a,b=reverse?edge.a:edge.b;this.cars.push({id:i+10,name:`City car ${i+1}`,a,b,previous:-1,travel:(i*.618%1)*edge.length,x:0,y:.18,z:0,heading:0,speed:0,maxSpeed:2.3+(i%5)*.33,vx:0,vz:0,vy:0,mass:600,held:false,airborne:false,recovering:false,health:1,damage:{total:0},wait:0,visits:0,wheelAngle:0});}
-    this.cars.forEach(c=>this.position(c));this.initial=this.exportState();
+    Object.assign(this,{plan,seed:seed>>>0,groundAt,obstacles,strike,clock:0});this.cars=[];this.locks=new Map();
+    this.lane=Math.min(1.6,plan.width*.23);this.turnRadius=Math.min(3.6,plan.width*.52);
+    for(let i=0;i<count;i++){
+      const edge=plan.edges[i%plan.edges.length],reverse=i%2===1,a=reverse?edge.b:edge.a,b=reverse?edge.a:edge.b;
+      const c={id:i+10,name:`City car ${i+1}`,a,b,next:-1,previous:-1,travel:(i*.618%1)*edge.length,turning:false,turnDistance:0,junction:-1,lane:this.lane,yieldUntil:0,x:0,y:.18,z:0,heading:0,speed:0,maxSpeed:2.3+(i%5)*.33,vx:0,vz:0,vy:0,mass:600,held:false,airborne:false,recovering:false,health:1,damage:{total:0},wait:0,visits:0,wheelAngle:0};
+      c.next=this.chooseNext(c);c.travel=clamp(c.travel,2.1,edge.length-this.turnRadius-1.3);this.position(c);
+      for(let attempt=0;attempt<80&&this.cars.some(o=>trafficContact(c,o));attempt++){c.travel=2.1+(attempt%12)/11*(this.length(c)-this.turnRadius-3.4);if(attempt%12===11){const e=plan.edges[(i+Math.floor(attempt/12)+1)%plan.edges.length];c.a=e.a;c.b=e.b;c.next=this.chooseNext(c);}this.position(c);}
+      this.cars.push(c);
+    }
+    this.initial=this.exportState();
   }
   random(){this.seed=(Math.imul(this.seed,1664525)+1013904223)>>>0;return this.seed/4294967296;}
   length(c){const a=this.plan.nodes[c.a],b=this.plan.nodes[c.b];return Math.hypot(b.x-a.x,b.z-a.z);}
-  position(c){const a=this.plan.nodes[c.a],b=this.plan.nodes[c.b],length=this.length(c),dx=(b.x-a.x)/length,dz=(b.z-a.z)/length,t=clamp(c.travel/length,0,1),lane=.78*Math.min(1,c.travel/2.3,(length-c.travel)/2.3);c.x=a.x+(b.x-a.x)*t+dz*lane;c.z=a.z+(b.z-a.z)*t-dx*lane;c.y=this.groundAt(c.x,c.z)+.18;c.heading=Math.atan2(dx,dz);c.vx=dx*c.speed;c.vz=dz*c.speed;}
+  chooseNext(c){const options=this.plan.nodes[c.b].neighbors.filter(n=>n!==c.a);return options.length?options[Math.floor(this.random()*options.length)]:c.a;}
+  exitClear(c,next){return !this.cars.some(o=>o!==c&&!o.held&&!o.airborne&&!o.recovering&&o.a===c.b&&o.b===next&&o.travel<this.turnRadius+4.5);}
+  racerPriority(node,racers){return racers.some(r=>{if(r.held||r.airborne||r.speed<2)return false;const dx=node.x-r.x,dz=node.z-r.z,forward=dx*Math.sin(r.heading)+dz*Math.cos(r.heading),side=Math.abs(dx*Math.cos(r.heading)-dz*Math.sin(r.heading));return forward>-4&&forward<Math.max(12,r.speed*4)&&side<5;});}
+  turn(c){
+    const a=this.plan.nodes[c.a],b=this.plan.nodes[c.b],n=this.plan.nodes[c.next],length=this.length(c),outLength=Math.hypot(n.x-b.x,n.z-b.z),dx=(b.x-a.x)/length,dz=(b.z-a.z)/length,ox=(n.x-b.x)/outLength,oz=(n.z-b.z)/outLength,r=Math.min(this.turnRadius,length*.3,outLength*.3),lane=c.lane;
+    const p0={x:b.x-dx*r+dz*lane,z:b.z-dz*r-dx*lane},p2={x:b.x+ox*r+oz*lane,z:b.z+oz*r-ox*lane};
+    const cross=dx*oz-dz*ox;
+    let p1;
+    if(Math.abs(cross)<.12)p1={x:(p0.x+p2.x)/2,z:(p0.z+p2.z)/2};
+    else{const t=((p2.x-p0.x)*oz-(p2.z-p0.z)*ox)/cross;p1={x:p0.x+dx*t,z:p0.z+dz*t};}
+    const sample=t=>({x:(1-t)**2*p0.x+2*(1-t)*t*p1.x+t*t*p2.x,z:(1-t)**2*p0.z+2*(1-t)*t*p1.z+t*t*p2.z});
+    let arc=0,prev=p0;const lengths=[0];for(let i=1;i<=24;i++){const p=sample(i/24);arc+=Math.hypot(p.x-prev.x,p.z-prev.z);lengths.push(arc);prev=p;}
+    return {r,p0,p1,p2,length:arc,lengths,sample};
+  }
+  position(c){
+    const a=this.plan.nodes[c.a],b=this.plan.nodes[c.b],length=this.length(c);let dx=(b.x-a.x)/length,dz=(b.z-a.z)/length;
+    if(c.turning){const path=this.turn(c),distance=clamp(c.turnDistance,0,path.length);let i=1;while(i<24&&path.lengths[i]<distance)i++;const t=(i-1+(distance-path.lengths[i-1])/Math.max(.001,path.lengths[i]-path.lengths[i-1]))/24,p=path.sample(t);c.x=p.x;c.z=p.z;dx=2*((1-t)*(path.p1.x-path.p0.x)+t*(path.p2.x-path.p1.x));dz=2*((1-t)*(path.p1.z-path.p0.z)+t*(path.p2.z-path.p1.z));const norm=Math.hypot(dx,dz)||1;dx/=norm;dz/=norm;}
+    else{const t=clamp(c.travel/length,0,1);c.x=a.x+(b.x-a.x)*t+dz*c.lane;c.z=a.z+(b.z-a.z)*t-dx*c.lane;}
+    c.y=this.groundAt(c.x,c.z)+.18;c.heading=Math.atan2(dx,dz);c.vx=dx*c.speed;c.vz=dz*c.speed;
+  }
   signal(node,vertical){const phase=(this.clock+node.id*.41)%12;return vertical?phase<5.5:phase>=6&&phase<11.5;}
-  lift(id,height){const c=this.cars.find(c=>c.id===id);if(!c||!Number.isFinite(height))return false;c.held=c.airborne=true;c.y=height;c.vx=c.vy=c.vz=c.speed=0;return true;}
+  lift(id,height){const c=this.cars.find(c=>c.id===id);if(!c||!Number.isFinite(height))return false;this.release(c);c.held=c.airborne=true;c.y=height;c.vx=c.vy=c.vz=c.speed=0;return true;}
   teleport(id,x,z){const c=this.cars.find(c=>c.id===id);if(!c||![x,z].every(Number.isFinite))return false;c.x=x;c.z=z;c.vx=c.vz=c.vy=0;return true;}
-  impulse(id,impulse){const c=this.cars.find(c=>c.id===id);if(!c)return false;c.held=false;c.airborne=true;c.vx+=(impulse.x||0)/c.mass;c.vz+=(impulse.z||0)/c.mass;c.vy+=(impulse.y||0)/c.mass;return true;}
+  impulse(id,impulse){const c=this.cars.find(c=>c.id===id);if(!c)return false;this.release(c);c.held=false;c.airborne=true;c.vx+=(impulse.x||0)/c.mass;c.vz+=(impulse.z||0)/c.mass;c.vy+=(impulse.y||0)/c.mass;return true;}
   hurt(c,speed){c.health=clamp(c.health-Math.max(0,speed-2)*.025,.15,1);c.damage.total=1-c.health;}
-  recover(c){let nearest=0,d=Infinity;this.plan.nodes.forEach((n,i)=>{const next=Math.hypot(c.x-n.x,c.z-n.z);if(next<d){d=next;nearest=i;}});c.a=nearest;c.b=this.plan.nodes[nearest].neighbors[0];c.travel=0;c.recovering=true;}
+  release(c){if(this.locks.get(c.junction)===c.id)this.locks.delete(c.junction);c.junction=-1;}
+  recover(c){this.release(c);let best=Infinity;for(const e of this.plan.edges)for(const reverse of [false,true]){const a=reverse?e.b:e.a,b=reverse?e.a:e.b,s={...c,a,b,turning:false,travel:0};const aa=this.plan.nodes[a],bb=this.plan.nodes[b],length=e.length;s.travel=clamp(((c.x-aa.x)*(bb.x-aa.x)+(c.z-aa.z)*(bb.z-aa.z))/length,2,length-2);this.position(s);const distance=Math.hypot(s.x-c.x,s.z-c.z);if(distance<best){best=distance;c.a=a;c.b=b;c.travel=s.travel;}}c.next=this.chooseNext(c);c.turning=false;c.turnDistance=0;c.recovering=true;}
+  racerContact(c,racer){
+    const contact=trafficContact(c,racer);if(!contact)return false;const {normal:n,depth}=contact;
+    const closing=(racer.vx-c.vx)*n.x+(racer.vz-c.vz)*n.z,invC=1/c.mass,invR=racer.held?0:1/racer.mass;
+    c.x-=n.x*(depth+.01);c.z-=n.z*(depth+.01);
+    if(closing<-.2){const impulse=-closing*1.12/(invC+invR);c.vx-=n.x*impulse*invC;c.vz-=n.z*impulse*invC;if(!racer.held){racer.vx+=n.x*impulse*invR;racer.vz+=n.z*impulse*invR;racer.speed=Math.hypot(racer.vx,racer.vz);if(racer.id<10){const severity=clamp((closing*closing-4)*.012,0,.6);racer.damage.total=clamp(1-(1-racer.damage.total)*(1-severity),0,1);racer.damage.front=clamp(racer.damage.front+severity*.5,0,1);}else{this.hurt(racer,-closing);racer.airborne=true;racer.recovering=false;this.release(racer);}}this.hurt(c,-closing);}
+    c.speed=0;c.airborne=true;c.recovering=false;this.release(c);return true;
+  }
   update(dt,racers=[],gravity=9.81){
     if(!Number.isFinite(dt)||dt<=0)return;dt=Math.min(.1,dt);this.clock+=dt;
     for(const c of this.cars){
       if(c.held)continue;
+      for(const racer of racers)this.racerContact(c,racer);
       if(c.airborne){const n=Math.ceil(dt/.016),step=dt/n;for(let i=0;i<n;i++){c.vy-=gravity*step;c.x+=c.vx*step;c.z+=c.vz*step;c.y+=c.vy*step;
+        for(const other of [...this.cars,...racers])if(other!==c&&!other.held)this.racerContact(c,other);
         for(const p of this.obstacles()){if(!p.solid||p.held||c.y+.7<p.y||c.y>p.y+p.height)continue;const dx=c.x-p.x,dz=c.z-p.z,d=Math.hypot(dx,dz),r=p.radius+.7;if(d>=r)continue;const nx=dx/(d||1),nz=dz/(d||1),closing=-(c.vx*nx+c.vz*nz);c.x=p.x+nx*(r+.02);c.z=p.z+nz*(r+.02);if(closing>0){this.hurt(c,closing);c.vx+=nx*closing*1.2;c.vz+=nz*closing*1.2;this.strike(p.id,{energy:.5*c.mass*closing**2,severity:closing/14,vx:c.vx,vz:c.vz});}}
         const floor=this.groundAt(c.x,c.z)+.18;if(c.y<floor){c.y=floor;this.hurt(c,Math.hypot(c.vx,c.vy,c.vz));c.vx=c.vy=c.vz=0;c.airborne=false;this.recover(c);break;}}
         continue;
       }
-      if(c.recovering){const node=this.plan.nodes[c.a],dx=node.x-c.x,dz=node.z-c.z,d=Math.hypot(dx,dz),step=Math.min(d,dt*1.4);c.x+=dx/Math.max(.001,d)*step;c.z+=dz/Math.max(.001,d)*step;c.y=this.groundAt(c.x,c.z)+.18;c.heading=Math.atan2(dx,dz);c.speed=1.4;if(d<.2){c.recovering=false;c.travel=0;}continue;}
+      if(c.recovering){const target={...c};this.position(target);const dx=target.x-c.x,dz=target.z-c.z,d=Math.hypot(dx,dz),step=Math.min(d,dt*1.4),candidate={...c,x:c.x+dx/Math.max(.001,d)*step,z:c.z+dz/Math.max(.001,d)*step,heading:d>.05?Math.atan2(dx,dz):target.heading};if(!this.cars.some(o=>o!==c&&!o.held&&!o.airborne&&trafficContact(candidate,o))){c.x=candidate.x;c.z=candidate.z;c.heading=candidate.heading;c.speed=1.4;c.y=this.groundAt(c.x,c.z)+.18;if(d<.05){c.recovering=false;this.position(c);}}else c.speed=0;continue;}
       const a=this.plan.nodes[c.a],b=this.plan.nodes[c.b],length=this.length(c),remaining=length-c.travel;
+      if(c.junction===c.a&&!c.turning&&c.travel>this.turnRadius+1.2)this.release(c);
+      const before={...c};
+      const approaching=racers.some(r=>{if(r.held||r.airborne||r.speed<2)return false;const dx=r.x-c.x,dz=r.z-c.z,side=Math.abs(dx*Math.cos(c.heading)-dz*Math.sin(c.heading)),alignment=Math.abs(Math.cos(r.heading-c.heading));return Math.hypot(dx,dz)<Math.max(25,r.speed*3)&&side<this.plan.width*.65&&alignment>.65;});
+      if(approaching)c.yieldUntil=this.clock+2;
+      const yielding=this.clock<c.yieldUntil;
+      if(!c.turning)c.lane+=clamp((yielding?Math.min(this.plan.width/2-.65,2.85):this.lane)-c.lane,-dt*2.5,dt*2.5);
+      const path=this.turn(c),stopDistance=path.r+1.3;
       let target=c.maxSpeed*(.45+c.health*.55);
-      if(remaining<3&&!this.signal(b,Math.abs(b.z-a.z)>Math.abs(b.x-a.x)))target=0;
-      for(const other of [...this.cars,...racers]){if(other===c||other.held||other.airborne)continue;const dx=other.x-c.x,dz=other.z-c.z,forward=dx*Math.sin(c.heading)+dz*Math.cos(c.heading),side=Math.abs(dx*Math.cos(c.heading)-dz*Math.sin(c.heading));if(forward>0&&forward<3.3&&side<.8)target=0;if(remaining<3&&Math.hypot(other.x-b.x,other.z-b.z)<2&&other.id<c.id&&other.speed>.3)target=0;}
+      if(c.turning)target=Math.min(target,2.1);
+      else if(yielding)target=0;
+      for(const other of [...this.cars,...racers]){if(other===c||other.held||other.airborne)continue;const dx=other.x-c.x,dz=other.z-c.z,forward=dx*Math.sin(c.heading)+dz*Math.cos(c.heading),side=Math.abs(dx*Math.cos(c.heading)-dz*Math.sin(c.heading));if(forward>0&&forward<3.1+c.speed*.3&&side<1.0)target=0;}
+      if(!c.turning&&remaining<stopDistance+1.5&&this.locks.get(c.b)!==c.id){
+        if(!this.exitClear(c,c.next)){const options=b.neighbors.filter(n=>n!==c.a&&this.exitClear(c,n));if(options.length)c.next=options[Math.floor(this.random()*options.length)];}
+        const clear=!this.locks.has(c.b)&&this.signal(b,Math.abs(b.z-a.z)>Math.abs(b.x-a.x))&&this.exitClear(c,c.next)&&!this.racerPriority(b,racers)&&Math.abs(c.lane-this.lane)<.05;
+        if(clear&&target>0){this.locks.set(c.b,c.id);c.junction=c.b;}
+        else target=0;
+      }
+      if(!c.turning&&remaining<stopDistance+1.5&&this.racerPriority(b,racers)){target=0;if(c.junction===c.b)this.release(c);}
       if(this.obstacles().some(p=>p.solid&&!p.held&&p.y<.8&&Math.hypot(p.x-c.x,p.z-c.z)<p.radius+1))target=0;
-      c.speed+=clamp(target-c.speed,-dt*6,dt*2);c.travel+=c.speed*dt;c.wheelAngle+=c.speed*dt/.18;c.wait=target===0?c.wait+dt:0;
-      if(c.travel>=length){const choices=b.neighbors.filter(n=>n!==c.a),next=choices.length?choices[Math.floor(this.random()*choices.length)]:c.a;c.previous=c.a;c.a=c.b;c.b=next;c.travel=0;c.visits++;}
-      if(c.wait>18){const old=c.a;c.a=c.b;c.b=old;c.travel=length-c.travel;c.wait=0;c.speed=.4;}
+      c.speed+=clamp(target-c.speed,-dt*6,dt*2);const move=c.speed*dt;
+      if(c.turning)c.turnDistance+=move;
+      else{
+        c.travel+=move;
+        if(this.locks.get(c.b)!==c.id)c.travel=Math.min(c.travel,length-stopDistance);
+        if(c.travel>=length-path.r){c.turning=true;c.turnDistance=c.travel-(length-path.r);}
+      }
+      if(c.turning&&c.turnDistance>=path.length){c.previous=c.a;c.a=c.b;c.b=c.next;c.travel=path.r+c.turnDistance-path.length;c.turning=false;c.turnDistance=0;c.visits++;c.next=this.chooseNext(c);}
       this.position(c);
+      const blocked=this.cars.some(o=>o!==c&&!o.held&&!o.airborne&&trafficContact(c,o))||racers.some(o=>!o.airborne&&trafficContact(c,o));
+      if(blocked){Object.assign(c,before);c.speed=c.vx=c.vz=0;}
+      c.wheelAngle+=c.speed*dt/.18;c.wait=target===0||blocked?c.wait+dt:0;
+      // A blocked exit can be rerouted while still on the approach lane.
+      if(c.wait>15&&!c.turning&&c.junction===c.b){c.next=this.chooseNext(c);c.wait=0;}
     }
   }
   exportState(){return{clock:this.clock,seed:this.seed,cars:this.cars.map(c=>({...c,damage:{...c.damage}}))};}
-  restoreState(saved){if(!saved||!Array.isArray(saved.cars)||saved.cars.length!==this.cars.length)return false;for(let i=0;i<this.cars.length;i++){const s=saved.cars[i],c=this.cars[i];if(!s||!Number.isInteger(s.a)||!Number.isInteger(s.b)||!this.plan.nodes[s.a]?.neighbors.includes(s.b))continue;for(const key of ['a','b','previous','travel','x','y','z','heading','speed','vx','vy','vz','health','wait','visits','wheelAngle'])if(Number.isFinite(s[key])&&Math.abs(s[key])<10000)c[key]=s[key];c.travel=clamp(c.travel,0,this.length(c));c.health=clamp(c.health,.15,1);c.damage.total=1-c.health;c.held=false;c.airborne=s.airborne===true||s.held===true;c.recovering=s.recovering===true;}if(Number.isFinite(saved.clock)&&saved.clock>=0)this.clock=saved.clock;if(Number.isInteger(saved.seed))this.seed=saved.seed>>>0;return true;}
+  restoreState(saved){if(!saved||!Array.isArray(saved.cars)||saved.cars.length!==this.cars.length)return false;this.locks.clear();for(let i=0;i<this.cars.length;i++){const s=saved.cars[i],c=this.cars[i];if(!s||!Number.isInteger(s.a)||!Number.isInteger(s.b)||!this.plan.nodes[s.a]?.neighbors.includes(s.b))continue;for(const key of ['a','b','previous','travel','x','y','z','heading','speed','vx','vy','vz','health','wait','visits','wheelAngle','turnDistance','lane','yieldUntil'])if(Number.isFinite(s[key])&&Math.abs(s[key])<10000)c[key]=s[key];c.lane=Number.isFinite(s.lane)?clamp(s.lane,.5,this.plan.width/2-.5):this.lane;c.yieldUntil=Number.isFinite(s.yieldUntil)?Math.max(0,s.yieldUntil):0;c.next=Number.isInteger(s.next)&&this.plan.nodes[c.b].neighbors.includes(s.next)?s.next:this.chooseNext(c);c.turning=s.turning===true;c.turnDistance=clamp(c.turnDistance,0,this.turn(c).length);c.junction=Number.isInteger(s.junction)&&s.junction>=0&&s.junction<this.plan.nodes.length?s.junction:-1;if(c.junction>=0&&!this.locks.has(c.junction))this.locks.set(c.junction,c.id);else c.junction=-1;c.travel=clamp(c.travel,0,this.length(c));c.health=clamp(c.health,.15,1);c.damage.total=1-c.health;c.held=false;c.airborne=s.airborne===true||s.held===true;c.recovering=s.recovering===true;if(!c.airborne&&!c.recovering)this.position(c);}if(Number.isFinite(saved.clock)&&saved.clock>=0)this.clock=saved.clock;if(Number.isInteger(saved.seed))this.seed=saved.seed>>>0;return true;}
   reset(){this.restoreState(this.initial);}
 }
 

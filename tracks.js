@@ -1,3 +1,5 @@
+import { createCityPlan } from './city.js';
+
 // Shared circuit definitions. Distances and coordinates use meters.
 export const TRACKS = {
   harbor: {name:'Pebble Bay',sub:'PEBBLE BAY CIRCUIT',grass:0x91b889,sand:0xd8c19a,water:0x8cc4c8,sky:0xe3eeee,sun:0xffedd2,points:[[-45,.17,25],[-29,.17,32],[-6,.17,27],[12,.17,34],[39,.17,24],[47,.17,7],[34,2,-10],[23,3,-23],[5,.17,-28],[-13,.17,-18],[-29,.17,-29],[-47,.17,-18],[-50,.17,4]]},
@@ -32,8 +34,8 @@ Object.assign(TRACKS.sunset,{setting:'sunset',difficulty:'Flowing',description:'
 
 // City worlds have connected side streets and several distinct districts.
 const cities=[
- ['foundry','Foundry City','harbor','A dense grid of apartment blocks, a downtown skyline, neighborhood parks, and busy side streets.',{xs:[-40,-24,-8,8,24,40],zs:[-28,-14,0,14,28],width:4.2,warp:0,parks:[[1,1],[3,2]],style:'modern',residents:108,traffic:28,seed:911},[[-52,0],[-52,-21],[-44,-34],[-22,-36],[20,-36],[44,-33],[53,-20],[53,13],[43,34],[19,36],[-22,36],[-45,32],[-52,18]]],
- ['oldquarter','Old Quarter','sunset','A close-knit old city with irregular streets, tiled roofs, market squares, and clustered neighborhoods.',{xs:[-41,-25,-10,5,21,39],zs:[-28,-15,-1,13,28],width:3.8,warp:2.2,parks:[[2,1]],style:'historic',residents:108,traffic:26,seed:1441},[[-53,2],[-50,-23],[-35,-36],[-10,-38],[24,-35],[47,-29],[54,-9],[51,20],[34,36],[6,38],[-26,35],[-49,24]]],
- ['gardenmetro','Garden Metro','alpine','Three lively districts around broad boulevards, a central garden, and a compact business center.',{xs:[-40,-22,-4,14,36],zs:[-28,-13,3,18,29],width:4.6,warp:-1.1,parks:[[1,1],[2,1]],style:'garden',residents:108,traffic:24,seed:2077},[[-52,0],[-48,-26],[-26,-36],[2,-37],[32,-34],[52,-19],[54,6],[46,28],[24,37],[-5,36],[-35,32],[-51,18]]]
+ ['foundry','Foundry City','harbor','A dense grid of apartment blocks, a downtown skyline, neighborhood parks, and busy side streets.',{xs:[-40,-24,-8,8,24,40],zs:[-28,-14,0,14,28],width:7,warp:0,parks:[[1,1],[3,2]],style:'modern',residents:108,traffic:28,seed:911},[[0,1],[4,1],[4,0],[5,0],[5,4],[3,4],[3,2],[2,2],[2,4],[0,4],[0,3],[1,3],[1,2],[0,2]]],
+ ['oldquarter','Old Quarter','sunset','A close-knit old city with irregular streets, tiled roofs, market squares, and clustered neighborhoods.',{xs:[-41,-25,-10,5,21,39],zs:[-28,-15,-1,13,28],width:7,warp:2.2,parks:[[2,1]],style:'historic',residents:108,traffic:26,seed:1441},[[0,1],[4,1],[4,0],[5,0],[5,4],[3,4],[3,2],[2,2],[2,4],[0,4],[0,3],[1,3],[1,2],[0,2]]],
+ ['gardenmetro','Garden Metro','alpine','Three lively districts around broad boulevards, a central garden, and a compact business center.',{xs:[-40,-22,-4,14,36],zs:[-28,-13,3,18,29],width:7,warp:-1.1,parks:[[1,1],[2,1]],style:'garden',residents:108,traffic:24,seed:2077},[[0,1],[3,1],[3,0],[4,0],[4,4],[2,4],[2,2],[1,2],[1,4],[0,4]]]
 ];
-for(const [key,name,setting,description,city,outline] of cities)TRACKS[key]={...TRACKS[setting],river:false,name,sub:name.toUpperCase()+' STREET RACE',setting,description,difficulty:'City',seed:city.seed,city,points:outline.map(([x,z])=>[x,.17,z])};
+for(const [key,name,setting,description,city,route] of cities){const plan=createCityPlan(city);TRACKS[key]={...TRACKS[setting],river:false,name,sub:name.toUpperCase()+' STREET RACE',setting,description:description+' The racers turn through the city streets.',difficulty:'City',seed:city.seed,city,routeRevision:2,points:route.map(([i,j])=>{const n=plan.nodes[j*city.xs.length+i];return[n.x,.18,n.z];})};}
