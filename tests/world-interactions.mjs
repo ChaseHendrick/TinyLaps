@@ -13,12 +13,12 @@ const makeCrowd=()=>new TownCrowd({walkable:(x,z)=>Math.abs(x)<44&&Math.abs(z)<3
 const crowd=makeCrowd();assert.equal(crowd.stats.population,36);assert.equal(crowd.stats.children,9);
 for(let i=0;i<600;i++)crowd.update(1/60);
 assert(crowd.stats.walking>0,'Town has pedestrians on ordinary daily walks');
-const p=crowd.people[0];const before=Math.hypot(p.x,p.z);crowd.react(p.x-.5,p.z-.5,5,'meteor');assert(crowd.stats.panicking>0);
+const p=crowd.people[0];crowd.react(p.x-.5,p.z-.5,5,'meteor');assert(crowd.stats.panicking>0);
 const panicPosition={x:p.x,z:p.z};for(let i=0;i<90;i++)crowd.update(1/60);assert(Math.hypot(p.x-panicPosition.x,p.z-panicPosition.z)>1,'People actually run from disturbance');
 for(let i=0;i<600;i++)crowd.update(1/60);assert.equal(crowd.stats.panicking,0,'Panic fades and routines return');
 assert.equal(crowd.lift(3,4),false,'Children remain non-graphic background town life');
 crowd.lift(0,4);crowd.move(0,0,0,4);const held=crowd.exportState();crowd.update(1/60);assert.equal(p.y,4,'Held person stays attached to pointer');
-crowd.release(0,{x:12,z:0,y:1});for(let i=0;i<75;i++)crowd.update(1/60);assert(p.x>4&&p.health<1&&p.recovery>0,'Thrown adult lands with stylized injury and a recovery pose');
+crowd.release(0,{x:12,z:0,y:1});for(let i=0;i<75;i++)crowd.update(1/60);assert(crowd.blood.length>0&&crowd.blood.every(drop=>!crowd.people[drop.adult].child),'Minor adult impact flecks remain bounded and exclude children');assert(p.x>4&&p.health<1&&p.recovery>0,'Thrown adult lands with stylized injury and a recovery pose');
 for(let i=0;i<600;i++)crowd.update(1/60);assert.equal(p.recovery,0);assert.equal(p.state,'stroll');crowd.react(p.x,p.z,2,'repair');assert.equal(p.health,1);
 crowd.blast(0,0,100,2);assert(crowd.people.filter(p=>p.child).every(p=>p.health===1&&!p.airborne),'Children react without injuries');
 const restored=makeCrowd();assert(restored.restoreState(held));assert(!restored.people[0].held&&restored.people[0].airborne,'A saved grab resumes as a drop');

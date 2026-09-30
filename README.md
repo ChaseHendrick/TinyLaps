@@ -38,7 +38,7 @@ The **Physics** tab exposes gravity, tire grip, impact restitution, damage inten
 
 Buildings crumple into rubble, trees fall, and broken props become nonsolid. Debris uses gravity, bounce, angular motion and ground friction. Roads deform with the terrain, and segmented guardrails retain damage until the world is restored.
 
-The villages have 36 residents, including families. Adults and children walk around their homes, run from meteors, shockwaves, terrain powers, and thrown objects, then return to their routines. Adult bodies have articulated shoulders, elbows, hips, and knees, with stylized tumbles, injury, and recovery. Children remain uninjured background town life. Repair ground also restores nearby adult health.
+The villages have 36 residents, including families. Adults and children walk around their homes, run from meteors, shockwaves, terrain powers, and thrown objects, then return to their routines. Adult bodies have articulated shoulders, elbows, hips, and knees, with stylized tumbles, injury, small temporary blood flecks, and recovery. Blood effects apply only to adults and are capped at 48 tiny particles. Children remain uninjured background town life. Repair ground also restores nearby adult health.
 
 ## Controls
 

@@ -4,7 +4,7 @@ import * as THREE from 'three';
 export class TownCrowd {
   constructor({ walkable, homes, seed = 17, count = 36, groundAt = () => 0, obstacles = () => [] }) {
     this.walkable = walkable; this.groundAt = groundAt; this.obstacles = obstacles;
-    this.clock = 0;
+    this.clock = 0;this.blood=[];
     this.seed = seed >>> 0;
     this.nodes = [];
     const grid = new Map();
@@ -64,11 +64,12 @@ export class TownCrowd {
   lift(id,height){const p=this.people[id];if(!p||p.child||!Number.isFinite(height))return false;p.held=true;p.airborne=true;p.y=height;p.vx=p.vy=p.vz=0;p.recovery=0;p.state='panic';p.moving=false;return p;}
   move(id,x,z,height){const p=this.people[id];if(!p?.held||![x,z,height].every(Number.isFinite))return false;p.x=x;p.z=z;p.y=height;return true;}
   release(id,velocity){const p=this.people[id];if(!p?.held)return false;p.held=false;p.airborne=true;for(const [key,value] of Object.entries({vx:velocity.x,vy:velocity.y,vz:velocity.z}))p[key]=Number.isFinite(value)?THREE.MathUtils.clamp(value,-35,35):0;return true;}
-  impact(p,speed){if(p.child)return;p.health=Math.max(.1,p.health-Math.max(0,speed-3)*.035);p.recovery=Math.max(p.recovery,1.5+Math.min(5,speed*.12));p.state='fallen';p.roll=Math.PI*.48;p.pitch=.1;}
+  impact(p,speed){if(p.child)return;const injury=Math.max(0,speed-3)*.035;if(injury>.03){for(let i=0;i<5;i++){if(this.blood.length>=48)this.blood.shift();const a=this.random()*Math.PI*2;this.blood.push({adult:p.id,x:p.x,y:this.groundAt(p.x,p.z)+.4,z:p.z,vx:Math.cos(a)*(.3+this.random()),vy:.4+this.random(),vz:Math.sin(a)*(.3+this.random()),life:3});}}p.health=Math.max(.1,p.health-Math.max(0,speed-3)*.035);p.recovery=Math.max(p.recovery,1.5+Math.min(5,speed*.12));p.state='fallen';p.roll=Math.PI*.48;p.pitch=.1;}
   blast(x,z,radius,energy=1){if(![x,z,radius,energy].every(Number.isFinite)||radius<=0)return;this.react(x,z,radius+8,'shockwave');for(const p of this.people){const dx=p.x-x,dz=p.z-z,d=Math.hypot(dx,dz);if(p.child||p.held||d>radius)continue;const speed=(1-d/radius)*energy*9;p.vx=dx/Math.max(.1,d)*speed;p.vz=dz/Math.max(.1,d)*speed;p.vy=speed*.45;p.airborne=true;p.y=Math.max(p.y,this.groundAt(p.x,p.z)+.05);this.impact(p,speed);}}
   update(dt,cars=[],gravity=9.81) {
     if (!Number.isFinite(dt)||dt<=0) return;
     dt=Math.min(dt,.1);this.clock+=dt;
+    for(const drop of this.blood){drop.life-=dt;drop.vy-=gravity*dt;drop.x+=drop.vx*dt;drop.z+=drop.vz*dt;drop.y=Math.max(this.groundAt(drop.x,drop.z)+.012,drop.y+drop.vy*dt);if(drop.y<=this.groundAt(drop.x,drop.z)+.013)drop.vx=drop.vy=drop.vz=0;}this.blood=this.blood.filter(drop=>drop.life>0);
     for (const person of this.people) {
       person.moving=false;
       if(person.held)continue;
@@ -107,7 +108,7 @@ export class TownCrowd {
       if(distance<=step+.001){person.previous=person.node;person.node=person.goal;person.goal=person.node;if(person.state!=='panic'&&this.random()<.2)person.wait=.6+this.random()*2.5;}
     }
   }
-  reset() { this.people=this.initial?.map(p=>({...p}))||[];this.clock=0; }
+  reset() { this.people=this.initial?.map(p=>({...p}))||[];this.clock=0;this.blood=[]; }
   exportState() { return {clock:this.clock,seed:this.seed,people:this.people.map(person=>({...person}))}; }
   restoreState(saved) {
     if(!saved||!Array.isArray(saved.people)||saved.people.length!==this.people.length)return false;
@@ -126,7 +127,7 @@ export class TownCrowd {
   get stats() {return {population:this.people.length,adults:this.people.filter(p=>!p.child).length,children:this.people.filter(p=>p.child).length,injured:this.people.filter(p=>p.health<1).length,walking:this.people.filter(p=>p.moving).length,panicking:this.people.filter(p=>p.state==='panic').length,curious:this.people.filter(p=>p.state==='curious').length};}
 }
 
-/** Instancing keeps the whole town to eight draw calls. */
+/** Instancing keeps the whole town to nine draw calls. */
 export function createPedestrians({group,scenery,terrain,seed=17}) {
   const crowd=new TownCrowd({walkable:scenery.isWalkable,homes:scenery.pedestrianHomes,seed,count:36,groundAt:(x,z)=>terrain.heightAt(x,z),obstacles:()=>scenery.colliders});
   const count=crowd.people.length;
@@ -141,6 +142,7 @@ export function createPedestrians({group,scenery,terrain,seed=17}) {
   const shoes=instances('People shoes',new THREE.BoxGeometry(.15,.1,.23),count*2);
   const mark=instances('People surprise marks',new THREE.CylinderGeometry(.032,.032,.28,6),count);
   const dot=instances('People surprise dots',new THREE.SphereGeometry(.045,6,4),count);
+  const blood=instances('Adult impact flecks',new THREE.SphereGeometry(.028,5,4),48);blood.count=0;for(let i=0;i<48;i++)blood.setColorAt(i,new THREE.Color('#9e4c43'));
   const skins=['#e3b294','#bc8e6c','#91664d','#714f3e'];const coats=['#ca816b','#85a9b0','#e5bb71','#a3b28b','#a294b7','#dba69f'];
   for(let i=0;i<count;i++){const skin=new THREE.Color(skins[i%skins.length]),coat=new THREE.Color(coats[i%coats.length]);head.setColorAt(i,skin);hair.setColorAt(i,new THREE.Color(['#514239','#6b503e','#302e2b','#b99568'][i%4]));torso.setColorAt(i,coat);for(let side=0;side<2;side++){for(let joint=0;joint<2;joint++){arms.setColorAt(i*4+side*2+joint,coat);legs.setColorAt(i*4+side*2+joint,new THREE.Color('#4e615e'));}shoes.setColorAt(i*2+side,new THREE.Color('#39433d'));}mark.setColorAt(i,new THREE.Color('#edb854'));dot.setColorAt(i,new THREE.Color('#edb854'));}
   const dummy=new THREE.Object3D();
@@ -164,7 +166,7 @@ export function createPedestrians({group,scenery,terrain,seed=17}) {
     }
     const alarm=person.state!=='stroll'&&!fallen;place(mark,i,person,0,1.92+bob+Math.sin(crowd.clock*8)*.035,0,0,alarm);place(dot,i,person,0,1.67+bob,0,0,alarm);
     torso.setColorAt(i,new THREE.Color(coats[i%coats.length]).multiplyScalar(.7+.3*person.health));
-  }for(const mesh of root.children){mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();}if(torso.instanceColor)torso.instanceColor.needsUpdate=true;}
+  }blood.count=crowd.blood.length;crowd.blood.forEach((drop,i)=>{dummy.position.set(drop.x,drop.y,drop.z);dummy.rotation.set(0,0,0);dummy.scale.setScalar(Math.min(1,drop.life));dummy.updateMatrix();blood.setMatrixAt(i,dummy.matrix);});for(const mesh of root.children){mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();}if(torso.instanceColor)torso.instanceColor.needsUpdate=true;}
   function pick(hit){if(![head,hair,torso,arms,legs,shoes].includes(hit.object)||!Number.isInteger(hit.instanceId))return null;return crowd.people[[arms,legs].includes(hit.object)?Math.floor(hit.instanceId/4):hit.object===shoes?Math.floor(hit.instanceId/2):hit.instanceId];}
   render();
   return {crowd,targets:[head,hair,torso,arms,legs,shoes],pick,lift:(id,height)=>crowd.lift(id,height),move:(...args)=>crowd.move(...args),release:(...args)=>crowd.release(...args),blast:(...args)=>crowd.blast(...args),react:(...args)=>crowd.react(...args),update:(dt,cars,gravity)=>{crowd.update(dt,cars,gravity);render();},reset:()=>{crowd.reset();render();},exportState:()=>crowd.exportState(),restoreState:saved=>{const restored=crowd.restoreState(saved);render();return restored;},get stats(){return crowd.stats;}};
