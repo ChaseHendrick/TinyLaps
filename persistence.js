@@ -1,10 +1,13 @@
 export const SAVE_KEY = 'tiny-laps-save-v1';
 const finite = value => Number.isFinite(value) && Math.abs(value) < 1e9;
-const fixedCarFields = new Set(['id', 'name', 'color', 'profile', 'personality', 'mass', 'inertia', 'held']);
+const fixedCarFields = new Set(['id', 'name', 'color', 'profile', 'personality', 'mass', 'inertia', 'held',
+  'contentProfileId', 'length', 'width', 'wheelbase', 'frontAxle', 'rearAxle', 'cgHeight',
+  'collisionHeight', 'wheelRadius', 'corneringFactor']);
 
 export function captureRace({ sim, terrain, scenery, barriers, people, traffic, water, view }) {
   return {
     version: 1, savedAt: Date.now(), view, routeRevision: sim.environment.routeRevision || 1,
+    contentRevision:sim.environment.contentRevision || undefined,
     elapsed: sim.elapsed, physics: { ...sim.physics }, aggression: sim.aggression,
     cars: sim.cars.map(car => Object.fromEntries(Object.entries(car).filter(([key]) => !fixedCarFields.has(key)))),
     terrain: terrain.exportState(), scenery: scenery.exportState(), people: people?.exportState(), traffic:traffic?.exportState(), water:water?.exportState(),
@@ -22,7 +25,11 @@ export function readRace(storage, themes) {
 }
 
 export function restoreRace(save, { sim, terrain, scenery, barriers, people, traffic, water }) {
-  if (!save || save.cars.length !== sim.cars.length) return false;
+  if (!save || !Array.isArray(save.cars) || save.cars.length !== sim.cars.length) return false;
+  // Generated definitions can change chassis and placements. Reject stale
+  // custom content before touching terrain, props, racers, or physics.
+  const contentRevision = sim.environment.contentRevision || undefined;
+  if ((contentRevision || save.contentRevision) && contentRevision !== save.contentRevision) return false;
   for (const car of save.cars) {
     if (!car || typeof car !== 'object' || !['x', 'y', 'z', 'progress', 'distance', 'heading', 'laps'].every(key => finite(car[key])) || !car.damage || !Object.values(car.damage).every(value => finite(value) && value >= 0 && value <= 1)) return false;
   }

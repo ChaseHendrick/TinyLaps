@@ -36,6 +36,64 @@ const WHEELBASE = 1.22;
 const FRONT_AXLE = .64;
 const REAR_AXLE = WHEELBASE - FRONT_AXLE;
 const CG_HEIGHT = .27;
+const COLOR = /^#[\da-f]{6}$/i;
+const PROFILE_ID = /^[a-z][a-z0-9-]{0,47}(?:\/[a-z][a-z0-9-]{0,47})?$/;
+const bounded = (value, min, max, label) => {
+  if (!Number.isFinite(value) || value < min || value > max) throw new RangeError(`${label} must be between ${min} and ${max}.`);
+  return value;
+};
+const text = (value, fallback, max, label) => {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string' || !value.trim() || value.length > max) throw new TypeError(`${label} must be nonempty text up to ${max} characters.`);
+  return value;
+};
+
+/** Supported silhouettes share the stock chassis; scale also sizes its contacts. */
+export function normalizeCarModel(model = {}) {
+  if (!model || typeof model !== 'object' || Array.isArray(model)) throw new TypeError('Car model must be an object.');
+  const body = model.body ?? 'roadster';
+  if (!['roadster', 'coupe', 'pickup'].includes(body)) throw new RangeError('Car body must be roadster, coupe, or pickup.');
+  const scale = model.scale ?? [1, 1, 1];
+  if (!Array.isArray(scale) || scale.length !== 3) throw new TypeError('Car model scale must contain X, Y, and Z.');
+  const result = { body, scale:Object.freeze(scale.map((value, index) => bounded(value, .85, 1.15, `Car scale ${index}`))) };
+  for (const key of ['stripeColor', 'accentColor']) {
+    if (model[key] === undefined) continue;
+    if (typeof model[key] !== 'string' || !COLOR.test(model[key])) throw new TypeError(`${key} must be a six-digit hex color.`);
+    result[key] = model[key];
+  }
+  return Object.freeze(result);
+}
+
+/** Defensive runtime boundary for generated data, independent of author tools. */
+export function normalizeCarProfiles(profiles) {
+  if (!Array.isArray(profiles) || profiles.length !== 10) throw new RangeError('A racing roster must contain exactly 10 profiles.');
+  return Object.freeze(profiles.map((profile, index) => {
+    if (!profile || typeof profile !== 'object' || Array.isArray(profile)) throw new TypeError(`Car profile ${index} must be an object.`);
+    const contentId = profile.contentId ?? profile.id;
+    if (typeof contentId !== 'string' || !PROFILE_ID.test(contentId)) throw new TypeError(`Car profile ${index} needs a stable content ID.`);
+    if (typeof profile.color !== 'string' || !COLOR.test(profile.color)) throw new TypeError(`Car ${contentId} needs a six-digit hex color.`);
+    const fallback = CAR_PROFILES[index].personality;
+    const personality = profile.personality ?? {};
+    if (!personality || typeof personality !== 'object' || Array.isArray(personality)) throw new TypeError(`Car ${contentId} personality must be an object.`);
+    const driver = {
+      label:text(personality.label, fallback.label, 80, 'Driver label'),
+      description:text(personality.description, fallback.description, 500, 'Driver description'),
+    };
+    for (const key of ['aggression', 'bravery', 'defensiveness', 'awareness']) driver[key] = bounded(personality[key] ?? fallback[key], 0, 1, `Driver ${key}`);
+    const normalized = {
+      id:profile.id ?? contentId.split('/').at(-1), contentId,
+      name:text(profile.name, undefined, 80, 'Car name'), color:profile.color,
+      topSpeed:bounded(profile.topSpeed, 8, 32, 'Top speed'),
+      cornering:bounded(profile.cornering, 5, 18, 'Cornering'),
+      acceleration:bounded(profile.acceleration, 2, 10, 'Acceleration'),
+      model:normalizeCarModel(profile.model), personality:Object.freeze(driver),
+    };
+    if (!normalized.name) throw new TypeError(`Car ${contentId} needs a name.`);
+    if (profile.contentPack !== undefined) normalized.contentPack = text(profile.contentPack, undefined, 48, 'Content pack');
+    if (profile.mass !== undefined) normalized.mass = bounded(profile.mass, 450, 1200, 'Car mass');
+    return Object.freeze(normalized);
+  }));
+}
 const G = 9.81;
 const LANES = [-1.55, 0, 1.55];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -55,6 +113,7 @@ export class RaceSimulation {
     this.trackLength = trackLength;
     this.sampleAtDistance = sampleAtDistance;
     this.environment = environment || {};
+    this.carProfiles = this.environment.carProfiles === undefined ? CAR_PROFILES : normalizeCarProfiles(this.environment.carProfiles);
     this.physics = { gravity:9.81, grip:1, restitution:.12, damageScale:1, enginePower:1 };
     this.aggression = .85;
     this._sampleCount = Math.max(160, Math.ceil(trackLength / .28));
@@ -79,15 +138,21 @@ export class RaceSimulation {
     this._senseTrafficAt = 0;
     this.playerCarId = null;
     this.playerInput = { steer:0, accelerate:0, reverse:0, brake:0 };
-    this.cars = CAR_PROFILES.map((profile, id) => {
+    this.cars = this.carProfiles.map((profile, id) => {
       const progress = -1.5 - Math.floor(id / 2) * 3.55 - (id % 2) * .20;
       const lane = id % 2 ? 1.15 : -1.15;
       const p = this._sample(progress);
-      const mass = 690 + id * 5;
+      const mass = profile.mass ?? 690 + id * 5;
+      const [sx, sy, sz] = profile.model?.scale ?? [1, 1, 1];
+      const length = CAR_LENGTH * sz, width = CAR_WIDTH * sx;
+      const wheelbase = WHEELBASE * sz, frontAxle = FRONT_AXLE * sz, rearAxle = REAR_AXLE * sz;
       return {
         id, name:profile.name, color:profile.color, profile,
+        contentProfileId:profile.contentId ?? profile.id ?? `stock-${id}`, length, width, wheelbase, frontAxle, rearAxle,
+        cgHeight:CG_HEIGHT * sy, collisionHeight:.8 * sy, wheelRadius:.212 * sy,
+        corneringFactor:profile.model && !profile.contentId?.startsWith('builtin/') ? profile.cornering / 12 : 1,
         personality:profile.personality, aggression:0,
-        mass, inertia:mass * (CAR_LENGTH ** 2 + CAR_WIDTH ** 2) / 12,
+        mass, inertia:mass * (length ** 2 + width ** 2) / 12,
         progress, distance:mod(progress, this.trackLength), lane, targetLane:lane,
         preferredLane:LANES[id % LANES.length] * .65,
         x:p.x - p.tz * lane, y:p.y, z:p.z + p.tx * lane,
@@ -98,8 +163,8 @@ export class RaceSimulation {
         lapStartedAt:null, nextLapLine:0, overtakes:0,
         throttle:0, brake:0, steering:0, slip:0, frontSlip:0, rearSlip:0,
         longitudinalSpeed:0, lateralSpeed:0, longitudinalAcceleration:0,
-        lateralAcceleration:0, frontLoad:mass * G * REAR_AXLE / WHEELBASE,
-        rearLoad:mass * G * FRONT_AXLE / WHEELBASE,
+        lateralAcceleration:0, frontLoad:mass * G * rearAxle / wheelbase,
+        rearLoad:mass * G * frontAxle / wheelbase,
         frontForce:0, rearForce:0, tireLimitFront:0, tireLimitRear:0,
         frontLongitudinalForce:0, rearLongitudinalForce:0,
         surface:'road', grip:1.12, gear:1, intent:'Launching', passing:false,
@@ -266,7 +331,7 @@ export class RaceSimulation {
     let gap = Infinity;
     for (const candidate of [...this.cars,...this._sensedTraffic]) {
       if (candidate.routeTraffic && Math.hypot(candidate.x-car.x,candidate.z-car.z)>25) continue;
-      const clearance = candidate.routeTraffic ? candidate.lateralExtent+CAR_WIDTH*.5+.03 : 1.25;
+      const clearance = candidate.routeTraffic ? candidate.lateralExtent+car.width*.5+.03 : 1.25;
       if (candidate === car || Math.abs(candidate.lane - lane) > clearance) continue;
       const distance = mod(candidate.distance - car.distance, this.trackLength);
       if (distance < gap) { gap = distance; other = candidate; }
@@ -279,7 +344,7 @@ export class RaceSimulation {
       if (other.routeTraffic && Math.hypot(other.x-car.x,other.z-car.z)>25) continue;
       if (other === car) continue;
       const gap = this._signedGap(car, other);
-      const clearance = other.routeTraffic ? other.lateralExtent+CAR_WIDTH*.5+.03 : 1.25;
+      const clearance = other.routeTraffic ? other.lateralExtent+car.width*.5+.03 : 1.25;
       const sweptExtent = other.routeTraffic ? clearance : .65;
       const sweptMin = Math.min(car.lane,target)-sweptExtent;
       const sweptMax = Math.max(car.lane,target)+sweptExtent;
@@ -372,7 +437,7 @@ export class RaceSimulation {
     // Anticipate the grip needed by each upcoming bend. Braver drivers leave
     // less braking room and use more of the available tire friction.
     const damageGrip = 1 - car.damage.suspension * .34;
-    const baseGrip = 1.12 * damageGrip * this.physics.grip;
+    const baseGrip = 1.12 * car.corneringFactor * damageGrip * this.physics.grip;
     const bravery = .65 + .20 * car.personality.bravery + .055 * car.aggression;
     const brakingRoom = 4.1 + car.aggression * 1.4;
     let desiredSpeed = Math.min(this.environment.speedLimit || Infinity,
@@ -419,7 +484,7 @@ export class RaceSimulation {
     const dx = targetX - car.x;
     const dz = targetZ - car.z;
     const lateralTarget = dx * r.x + dz * r.z;
-    const pursuit = Math.atan2(2 * WHEELBASE * lateralTarget, Math.max(1,dx * dx + dz * dz));
+    const pursuit = Math.atan2(2 * car.wheelbase * lateralTarget, Math.max(1,dx * dx + dz * dz));
     let steering = pursuit;
     if (reversing) steering = -Math.sign(headingError || car.lane || 1) * .67;
     // Countersteer a rear slide. Better awareness catches it earlier.
@@ -456,18 +521,18 @@ export class RaceSimulation {
       car.frontForce=car.rearForce=car.frontLongitudinalForce=car.rearLongitudinalForce=0;
       return;
     }
-    const footprintEdge = Math.abs(car.lane) + CAR_WIDTH * .5;
+    const footprintEdge = Math.abs(car.lane) + car.width * .5;
     car.surface = footprintEdge > 3.55 ? 'grass' : footprintEdge > 3.25 ? 'curb' : 'road';
     const surfaceGrip = car.surface === 'grass' ? .53 : car.surface === 'curb' ? .84 : 1.12;
     const roadHeight = this._sample(car.distance).y;
     const environmentSurface = this.environment.sampleSurface?.(car.x,car.z,roadHeight) || {};
     const roughness = clamp(environmentSurface.roughness || 0,0,1);
-    car.grip = surfaceGrip * (1 - car.damage.suspension * .34) * this.physics.grip
+    car.grip = surfaceGrip * car.corneringFactor * (1 - car.damage.suspension * .34) * this.physics.grip
       * clamp(environmentSurface.grip ?? 1,.1,2) * (1-roughness*.22);
     const gravity = this.physics.gravity;
-    const transfer = clamp(car.mass * car.longitudinalAcceleration * CG_HEIGHT / WHEELBASE,
+    const transfer = clamp(car.mass * car.longitudinalAcceleration * car.cgHeight / car.wheelbase,
       -car.mass * gravity * .22, car.mass * gravity * .22);
-    const frontLoad = car.mass * gravity * REAR_AXLE / WHEELBASE - transfer;
+    const frontLoad = car.mass * gravity * car.rearAxle / car.wheelbase - transfer;
     const rearLoad = car.mass * gravity - frontLoad;
     car.frontLoad = frontLoad;
     car.rearLoad = rearLoad;
@@ -491,8 +556,8 @@ export class RaceSimulation {
     const rearFx = clamp(engineForce - brakeForce * .36,-rearLimit,rearLimit);
     const active = clamp(Math.abs(u) / 1.2,0,1);
     const safeU = Math.max(1.8,Math.abs(u));
-    const frontSlip = Math.atan2(v + FRONT_AXLE * car.yawRate,safeU) - car.steering * Math.sign(u || car.gear);
-    const rearSlip = Math.atan2(v - REAR_AXLE * car.yawRate,safeU);
+    const frontSlip = Math.atan2(v + car.frontAxle * car.yawRate,safeU) - car.steering * Math.sign(u || car.gear);
+    const rearSlip = Math.atan2(v - car.rearAxle * car.yawRate,safeU);
     const stiffnessPenalty = 1 - car.damage.suspension * .28;
     const frontAvailable = Math.sqrt(Math.max(0,frontLimit ** 2 - frontFx ** 2));
     const rearAvailable = Math.sqrt(Math.max(0,rearLimit ** 2 - rearFx ** 2));
@@ -524,7 +589,7 @@ export class RaceSimulation {
       forceX -= car.mass * gravity * (f.x*gradeF+r.x*gradeR);
       forceZ -= car.mass * gravity * (f.z*gradeF+r.z*gradeR);
     }
-    const yawTorque = FRONT_AXLE * frontLateral - REAR_AXLE * rearFy - car.yawRate * car.inertia * .55;
+    const yawTorque = car.frontAxle * frontLateral - car.rearAxle * rearFy - car.yawRate * car.inertia * .55;
     car.vx += forceX / car.mass * dt;
     car.vz += forceZ / car.mass * dt;
     car.yawRate = clamp(car.yawRate + yawTorque / car.inertia * dt,-12,12);
@@ -535,7 +600,7 @@ export class RaceSimulation {
     car.longitudinalAcceleration = approach(car.longitudinalAcceleration,longitudinal / car.mass,18 * dt);
     car.lateralAcceleration = lateral / car.mass;
     car.bank = clamp(-car.lateralAcceleration * .0045 + roughness*.018*Math.sin(car.progress*3),-.065,.065);
-    car.wheelAngle = mod(car.wheelAngle + u / .212 * dt,Math.PI * 2);
+    car.wheelAngle = mod(car.wheelAngle + u / car.wheelRadius * dt,Math.PI * 2);
   }
 
   _event(type, cars, x,z,impulse,severity,collider) {
@@ -574,15 +639,15 @@ export class RaceSimulation {
   }
 
   _collision(a,b,correctOnly = false) {
-    if (Math.abs(a.y-b.y) > .8) return false;
+    if (Math.abs(a.y-b.y) > Math.max(a.collisionHeight,b.collisionHeight)) return false;
     const dx = b.x - a.x;
     const dz = b.z - a.z;
-    if (dx * dx + dz * dz > 6.4) return false;
+    if (dx * dx + dz * dz > Math.max(6.4,((Math.hypot(a.length,a.width)+Math.hypot(b.length,b.width))*.5)**2)) return false;
     const aa = axes(a), ba = axes(b);
     let depth = Infinity, normal = null;
     for (const axis of [aa.f,aa.r,ba.f,ba.r]) {
-      const aExtent = Math.abs(dot(axis,aa.f)) * CAR_LENGTH * .5 + Math.abs(dot(axis,aa.r)) * CAR_WIDTH * .5;
-      const bExtent = Math.abs(dot(axis,ba.f)) * CAR_LENGTH * .5 + Math.abs(dot(axis,ba.r)) * CAR_WIDTH * .5;
+      const aExtent = Math.abs(dot(axis,aa.f)) * a.length * .5 + Math.abs(dot(axis,aa.r)) * a.width * .5;
+      const bExtent = Math.abs(dot(axis,ba.f)) * b.length * .5 + Math.abs(dot(axis,ba.r)) * b.width * .5;
       const centerDistance = dx * axis.x + dz * axis.z;
       const overlap = aExtent + bExtent - Math.abs(centerDistance);
       if (overlap <= 0) return false;
@@ -628,7 +693,7 @@ export class RaceSimulation {
 
   _barrier(car) {
     const p = this._project(car);
-    if (car.airborne && car.y > p.y+.85) return;
+    if (car.airborne && car.y > p.y+car.collisionHeight+.05) return;
     const side = Math.sign(p.lane) || 1;
     const barrier = this.environment.barrierAt?.(p.distance,side);
     if (barrier && (barrier.health <= 0 || barrier.solid === false)) return;
@@ -636,11 +701,11 @@ export class RaceSimulation {
     const { f,r } = axes(car);
     const fSign = Math.sign(dot(outward,f));
     const rSign = Math.sign(dot(outward,r));
-    const reach = Math.abs(dot(outward,f)) * CAR_LENGTH * .5 + Math.abs(dot(outward,r)) * CAR_WIDTH * .5;
+    const reach = Math.abs(dot(outward,f)) * car.length * .5 + Math.abs(dot(outward,r)) * car.width * .5;
     const penetration = Math.abs(p.lane) + reach - 4.1;
     if (penetration <= 0) return;
-    const offset = { x:f.x * fSign * CAR_LENGTH * .5 + r.x * rSign * CAR_WIDTH * .5,
-      z:f.z * fSign * CAR_LENGTH * .5 + r.z * rSign * CAR_WIDTH * .5 };
+    const offset = { x:f.x * fSign * car.length * .5 + r.x * rSign * car.width * .5,
+      z:f.z * fSign * car.length * .5 + r.z * rSign * car.width * .5 };
     const contact = { x:car.x + offset.x,z:car.z + offset.z };
     const pointVelocity = { x:car.vx + car.yawRate * offset.z,z:car.vz - car.yawRate * offset.x };
     const outwardSpeed = dot(pointVelocity,outward);
@@ -671,22 +736,22 @@ export class RaceSimulation {
     for (const obstacle of this.environment.colliders || []) {
       if (obstacle.health <= 0 || obstacle.solid === false || !(obstacle.radius > 0)) continue;
       const base=Number.isFinite(obstacle.y)?obstacle.y:car.groundHeight;
-      if(car.y+.8<base||car.y>base+(obstacle.height||1.2))continue;
+      if(car.y+car.collisionHeight<base||car.y>base+(obstacle.height||1.2))continue;
       const dx = obstacle.x-car.x, dz = obstacle.z-car.z;
-      const broad = obstacle.radius + 1.2;
+      const broad = obstacle.radius + Math.max(1.2,Math.hypot(car.length,car.width)*.5);
       if (dx*dx+dz*dz > broad*broad) continue;
       const localF = dx*f.x+dz*f.z, localR = dx*r.x+dz*r.z;
-      let closestF = clamp(localF,-CAR_LENGTH*.5,CAR_LENGTH*.5);
-      let closestR = clamp(localR,-CAR_WIDTH*.5,CAR_WIDTH*.5);
+      let closestF = clamp(localF,-car.length*.5,car.length*.5);
+      let closestR = clamp(localR,-car.width*.5,car.width*.5);
       let nx = dx-f.x*closestF-r.x*closestR;
       let nz = dz-f.z*closestF-r.z*closestR;
       let distance = Math.hypot(nx,nz);
       let penetration = obstacle.radius-distance;
       if (penetration <= 0) continue;
       if (distance < 1e-6) {
-        const gapF = CAR_LENGTH*.5-Math.abs(localF), gapR = CAR_WIDTH*.5-Math.abs(localR);
-        if (gapF < gapR) { nx=f.x*Math.sign(localF || 1); nz=f.z*Math.sign(localF || 1); closestF=CAR_LENGTH*.5*Math.sign(localF || 1); penetration+=gapF; }
-        else { nx=r.x*Math.sign(localR || 1); nz=r.z*Math.sign(localR || 1); closestR=CAR_WIDTH*.5*Math.sign(localR || 1); penetration+=gapR; }
+        const gapF = car.length*.5-Math.abs(localF), gapR = car.width*.5-Math.abs(localR);
+        if (gapF < gapR) { nx=f.x*Math.sign(localF || 1); nz=f.z*Math.sign(localF || 1); closestF=car.length*.5*Math.sign(localF || 1); penetration+=gapF; }
+        else { nx=r.x*Math.sign(localR || 1); nz=r.z*Math.sign(localR || 1); closestR=car.width*.5*Math.sign(localR || 1); penetration+=gapR; }
         distance=1;
       }
       const normal = { x:nx/distance,z:nz/distance };

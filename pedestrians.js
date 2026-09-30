@@ -129,7 +129,7 @@ export class TownCrowd {
 
 /** Instancing keeps the whole town to nine draw calls. */
 export function createPedestrians({group,scenery,terrain,seed=17}) {
-  const crowd=new TownCrowd({walkable:scenery.isWalkable,homes:scenery.pedestrianHomes,seed,count:scenery.residentCount||36,groundAt:(x,z)=>terrain.heightAt(x,z),obstacles:()=>scenery.colliders});
+  const crowd=new TownCrowd({walkable:scenery.isWalkable,homes:scenery.pedestrianHomes,seed,count:scenery.residentCount??36,groundAt:(x,z)=>terrain.heightAt(x,z),obstacles:()=>scenery.colliders});
   const count=crowd.people.length;
   const root=new THREE.Group();root.name='Town life';group.add(root);
   const material=new THREE.MeshStandardMaterial({roughness:.9});

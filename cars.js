@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { normalizeCarModel } from './race.js';
 
 // All dimensions are in the same units as the road. The car's nose faces +Z.
 const bodyMaterial = new THREE.MeshStandardMaterial({
@@ -117,13 +118,14 @@ function numberMaterial(number) {
   return material;
 }
 
-export function createCar(color, number, variant = 0) {
+export function createCar(color, number, variant = 0, model = {}) {
+  const definition = normalizeCarModel(model);
   const car = new THREE.Group();
-  car.name = `Roadster ${number}`;
+  car.name = `${definition.body[0].toUpperCase()}${definition.body.slice(1)} ${number}`;
   const paint = new THREE.Color(color);
   const darkPaint = paint.clone().multiplyScalar(0.56);
-  const cream = '#fff4d6';
-  const metal = '#c5d0cc';
+  const cream = definition.stripeColor ?? '#fff4d6';
+  const metal = definition.accentColor ?? '#c5d0cc';
   const rubber = '#27323a';
   const parts = [];
   const box = (c, p, s, r) => parts.push(coloredPart(rounded, c, p, s, r));
@@ -141,9 +143,11 @@ export function createCar(color, number, variant = 0) {
       ball(paint, [side * 0.374, 0.326, z], [0.135, 0.145, 0.26]);
     }
   }
-  box(rubber, [0, 0.43, -0.14], [0.55, 0.10, 0.57]);
-  box('#4c554d', [0, 0.492, -0.22], [0.25, 0.13, 0.24]);
-  box('#4c554d', [0, 0.535, -0.38], [0.28, 0.20, 0.07], [-0.13, 0, 0]);
+  if (definition.body === 'roadster') {
+    box(rubber, [0, 0.43, -0.14], [0.55, 0.10, 0.57]);
+    box('#4c554d', [0, 0.492, -0.22], [0.25, 0.13, 0.24]);
+    box('#4c554d', [0, 0.535, -0.38], [0.28, 0.20, 0.07], [-0.13, 0, 0]);
+  }
 
   // Two ivory racing stripes run over the bonnet and rounded tail.
   for (const side of [-1, 1]) {
@@ -169,31 +173,61 @@ export function createCar(color, number, variant = 0) {
   tube(metal, [0.29, 0.185, -0.871], [0.032, 0.19, 0.032], [Math.PI / 2, 0, 0]);
   tube(rubber, [0.29, 0.185, -0.969], [0.022, 0.007, 0.022], [Math.PI / 2, 0, 0]);
 
-  // A helmeted driver keeps the scene playful at close range.
-  ball(darkPaint, [0, 0.563, -0.245], [0.135, 0.135, 0.10]);
-  ball(cream, [0, 0.725, -0.265], [0.123, 0.128, 0.12]);
-  box(paint, [0, 0.837, -0.267], [0.039, 0.010, 0.075]);
-  box('#284756', [0, 0.735, -0.159], [0.188, 0.062, 0.048]);
-  ball(cream, [-0.1, 0.565, -0.09], [0.043, 0.038, 0.037]);
-  ball(cream, [0.1, 0.565, -0.09], [0.043, 0.038, 0.037]);
-  parts.push(coloredPart(new THREE.TorusGeometry(0.092, 0.013, 6, 16), rubber, [0, 0.57, -0.055], [1, 1, 1], [-0.33, 0, 0]));
+  if (definition.body === 'roadster') {
+    // A helmeted driver keeps the scene playful at close range.
+    ball(darkPaint, [0, 0.563, -0.245], [0.135, 0.135, 0.10]);
+    ball(cream, [0, 0.725, -0.265], [0.123, 0.128, 0.12]);
+    box(paint, [0, 0.837, -0.267], [0.039, 0.010, 0.075]);
+    box('#284756', [0, 0.735, -0.159], [0.188, 0.062, 0.048]);
+    ball(cream, [-0.1, 0.565, -0.09], [0.043, 0.038, 0.037]);
+    ball(cream, [0.1, 0.565, -0.09], [0.043, 0.038, 0.037]);
+    parts.push(coloredPart(new THREE.TorusGeometry(0.092, 0.013, 6, 16), rubber, [0, 0.57, -0.055], [1, 1, 1], [-0.33, 0, 0]));
 
-  // A slim windshield with rounded corners and a simple chrome frame.
-  box(metal, [0, 0.545, 0.133], [0.62, 0.024, 0.031]);
-  box(metal, [0, 0.682, 0.08], [0.59, 0.018, 0.025]);
-  for (const side of [-1, 1]) {
-    box(metal, [side * 0.292, 0.61, 0.105], [0.018, 0.153, 0.024], [-0.34, 0, 0]);
-  }
-
-  if (variant % 3 === 1) {
+    // A slim windshield with rounded corners and a simple chrome frame.
+    box(metal, [0, 0.545, 0.133], [0.62, 0.024, 0.031]);
+    box(metal, [0, 0.682, 0.08], [0.59, 0.018, 0.025]);
     for (const side of [-1, 1]) {
-      box(darkPaint, [side * 0.24, 0.515, -0.725], [0.035, 0.14, 0.035]);
+      box(metal, [side * 0.292, 0.61, 0.105], [0.018, 0.153, 0.024], [-0.34, 0, 0]);
     }
-    box(paint, [0, 0.582, -0.735], [0.88, 0.043, 0.13], [-0.08, 0, 0]);
-  } else if (variant % 3 === 2) {
-    // A rounded roll hoop gives another silhouette without extra draw calls.
-    parts.push(coloredPart(new THREE.TorusGeometry(0.17, 0.023, 6, 16, Math.PI), metal, [0, 0.52, -0.46]));
-    for (const side of [-1, 1]) tube(metal, [side * 0.17, 0.492, -0.46], [0.023, 0.075, 0.023]);
+
+    if (variant % 3 === 1) {
+      for (const side of [-1, 1]) {
+        box(darkPaint, [side * 0.24, 0.515, -0.725], [0.035, 0.14, 0.035]);
+      }
+      box(paint, [0, 0.582, -0.735], [0.88, 0.043, 0.13], [-0.08, 0, 0]);
+    } else if (variant % 3 === 2) {
+      // A rounded roll hoop gives another silhouette without extra draw calls.
+      parts.push(coloredPart(new THREE.TorusGeometry(0.17, 0.023, 6, 16, Math.PI), metal, [0, 0.52, -0.46]));
+      for (const side of [-1, 1]) tube(metal, [side * 0.17, 0.492, -0.46], [0.023, 0.075, 0.023]);
+    }
+  } else if (definition.body === 'coupe') {
+    // A closed two-door cabin adds an actual roof and framed side windows.
+    box(paint, [0, .795, -.16], [.69, .10, .73]);
+    for (const side of [-1, 1]) {
+      box(paint, [side * .323, .652, -.15], [.026, .24, .64]);
+      box(metal, [side * .322, .649, .174], [.026, .25, .027], [-.24, 0, 0]);
+      box(paint, [side * .322, .645, -.476], [.034, .24, .032], [.18, 0, 0]);
+      box(metal, [side * .435, .46, -.20], [.013, .026, .10]);
+    }
+    box(metal, [0, .552, .187], [.62, .024, .029]);
+    box(metal, [0, .764, .134], [.62, .02, .025]);
+    for (const side of [-1, 1]) box(cream, [side * .058, .85, -.16], [.055, .008, .65]);
+  } else {
+    // A forward cab and open bed distinguish the pickup without changing the
+    // shared wheel mounts, chassis envelope, panel damage, or driving controls.
+    box(paint, [0, .79, .08], [.70, .10, .48]);
+    box(paint, [0, .635, -.16], [.70, .25, .042]);
+    for (const side of [-1, 1]) {
+      box(paint, [side * .335, .64, .072], [.035, .25, .44]);
+      box(metal, [side * .323, .64, .29], [.025, .25, .025], [-.13, 0, 0]);
+      box(paint, [side * .36, .52, -.51], [.08, .19, .59]);
+      box(metal, [side * .42, .46, .015], [.012, .025, .09]);
+    }
+    box(darkPaint, [0, .447, -.515], [.63, .028, .58]);
+    box(paint, [0, .52, -.805], [.70, .19, .038]);
+    for (let i = -2; i <= 2; i++) box(metal, [i * .095, .465, -.52], [.012, .016, .54]);
+    box(metal, [0, .53, .307], [.64, .024, .028]);
+    box(metal, [0, .761, .275], [.62, .02, .025]);
   }
 
   const body = new THREE.Mesh(combine(parts), bodyMaterial);
@@ -201,10 +235,21 @@ export function createCar(color, number, variant = 0) {
   body.receiveShadow = true;
   car.add(body);
 
-  const windshield = new THREE.Mesh(new RoundedBoxGeometry(0.568, 0.127, 0.014, 2, 0.006), glassMaterial);
-  windshield.position.set(0, 0.61, 0.105);
-  windshield.rotation.x = -0.34;
+  const screen = definition.body === 'roadster' ? { height:.127, y:.61, z:.105, angle:-.34 }
+    : definition.body === 'coupe' ? { height:.195, y:.65, z:.16, angle:-.24 }
+    : { height:.21, y:.645, z:.293, angle:-.13 };
+  const windshield = new THREE.Mesh(new RoundedBoxGeometry(0.568, screen.height, 0.014, 2, 0.006), glassMaterial);
+  windshield.position.set(0, screen.y, screen.z);
+  windshield.rotation.x = screen.angle;
   car.add(windshield);
+  if (definition.body !== 'roadster') {
+    const windows = [];
+    const centerZ = definition.body === 'coupe' ? -.15 : .07;
+    const length = definition.body === 'coupe' ? .54 : .37;
+    for (const side of [-1, 1]) windows.push(coloredPart(rounded, '#ffffff', [side * .34, .652, centerZ], [.015, .17, length]));
+    windows.push(coloredPart(rounded, '#ffffff', [0, .655, definition.body === 'coupe' ? -.473 : -.183], [.57, .17, .012]));
+    car.add(new THREE.Mesh(combine(windows), glassMaterial));
+  }
 
   const decal = new THREE.Mesh(new THREE.PlaneGeometry(0.30, 0.30), numberMaterial(number));
   decal.rotation.x = -Math.PI / 2;
@@ -238,6 +283,8 @@ export function createCar(color, number, variant = 0) {
   car.userData.selectionRing = selectionRing;
   car.userData.number = number;
   car.userData.wheelRadius = 0.212;
+  car.userData.model = definition;
+  car.userData.windshieldBase = screen;
   car.userData.body = body;
   car.userData.windshield = windshield;
   car.userData.numberDecal = decal;
@@ -253,6 +300,9 @@ export function createCar(color, number, variant = 0) {
   body.geometry.attributes.color.setUsage(THREE.DynamicDrawUsage);
   body.geometry.attributes.normal.setUsage(THREE.DynamicDrawUsage);
   decal.geometry.attributes.position.setUsage(THREE.DynamicDrawUsage);
+  // Scaling the complete group includes glass, decals, wheel mounts, selection,
+  // and future smoke. Damage still operates in its unchanged local coordinates.
+  car.scale.set(...definition.scale);
   return car;
 }
 
@@ -355,9 +405,10 @@ export function updateCarDamage(car, damage = {}) {
   decal.geometry.computeVertexNormals();
 
   const windshield = car.userData.windshield;
+  const screen = car.userData.windshieldBase;
   const glassStress = Math.max(0, state.front - 0.35);
-  windshield.rotation.set(-0.34 - glassStress * 0.48, (state.right - state.left) * 0.10, (state.left - state.right) * 0.11);
-  windshield.position.set((state.left - state.right) * 0.013, 0.61 - glassStress * 0.034, 0.105 - glassStress * 0.026);
+  windshield.rotation.set(screen.angle - glassStress * 0.48, (state.right - state.left) * 0.10, (state.left - state.right) * 0.11);
+  windshield.position.set((state.left - state.right) * 0.013, screen.y - glassStress * 0.034, screen.z - glassStress * 0.026);
   windshield.visible = state.front < 0.93;
   if (state.front <= 0.4 && car.userData.engineSmoke) car.userData.engineSmoke.visible = false;
   for (const wheel of car.userData.wheels) {

@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // A small model-making kit. Static pieces are baked together by material so
 // trees, roof tiles, window frames and flower patches stay inexpensive to draw.
-export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme === 'harbor', samples, seed = 17, city = null }) {
+export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme === 'harbor', samples, seed = 17, city = null, authoredProps = [] }) {
   const palettes = {
     harbor: { grass: '#9caf83', dark: '#50766b', leaf: '#78987a', light: '#bac89b', roof: '#bd775f', roof2: '#667e8b', wall: '#f3e6ca', wall2: '#dfb798', accent: '#e29c76', pond: '#83beb8', hill: '#96ad83' },
     alpine: { grass: '#98ad89', dark: '#4e776e', leaf: '#709382', light: '#b1c399', roof: '#967365', roof2: '#627b82', wall: '#f0e5ce', wall2: '#c7bda4', accent: '#d9a17e', pond: '#8bbdc1', hill: '#9bac8e' },
@@ -42,8 +42,8 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
   const dynamic = new THREE.Group();
   group.add(dynamic);
 
-  function createProp(kind, x, z, radius, mass, height) {
-    const collider = { id: `${theme}-${kind}-${colliders.length}`, x, y: 0, z, radius, health: 1, mass, height, kind, solid: true };
+  function createProp(kind, x, z, radius, mass, height, contentId) {
+    const collider = { id: contentId || `${theme}-${kind}-${colliders.length}`, x, y: 0, z, radius, health: 1, mass, height, kind, solid: true };
     const prop = { collider, origin:{x,y:0,z}, held:false,moving:false,vx:0,vy:0,vz:0,cooldown:0, ranges: [], dynamic: [], angle: 0, angularVelocity: 0, collapse: 0, collapseVelocity: 0, directionX: 1, directionZ: 0, damage: 0, dirty: false, settled: false };
     colliders.push(collider); props.set(collider.id, prop); return prop;
   }
@@ -122,6 +122,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
   }
   function house(x, z, yaw, index = 0, large = false) {
     const w = large ? 5.3 : range(2.6, 3.8), d = large ? 3.7 : range(2.5, 3.4), h = large ? 3.9 : range(2.0, 3.2);
+    if(clashesWithAuthored(x,z,Math.hypot(w+1.8,d+1.2)*.5))return;
     const prop = createProp('building', x, z, Math.hypot(w, d) * .5, large ? 1750 : 1050, h + w * .38);
     const beforeProp = activeProp; activeProp = prop;
     inFrame(x, 0, z, yaw, () => {
@@ -155,6 +156,29 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
     });
     activeProp = beforeProp;
   }
+
+  // Authored scenery shares the existing collision, grab, damage and save paths.
+  // Reserve its footprint first so generated buildings and trees leave room.
+  const authoredFootprints = [];
+  for (const placement of authoredProps) {
+    const definition = placement.definition;
+    const footprint = {x:placement.x,z:placement.z,r:definition.collider.radius};
+    authoredFootprints.push(footprint);reserve(footprint.x,footprint.z,footprint.r);
+    const id = `content/${placement.prop}/${placement.id || `${placement.x}:${placement.z}`}`;
+    const prop = createProp(definition.kind || 'custom',placement.x,placement.z,definition.collider.radius,definition.collider.mass,definition.collider.height,id);
+    prop.collider.contentId = placement.prop;prop.collider.name = definition.name;
+    const previousProp = activeProp;activeProp = prop;
+    inFrame(placement.x,0,placement.z,placement.yaw || 0,()=>{
+      for(const part of definition.parts){
+        const colorKey=`content:${part.color}`;
+        const paint=materials[colorKey] || mat(colorKey,part.color);
+        const geometry=part.shape==='box'?new THREE.BoxGeometry(...part.size):part.shape==='sphere'?new THREE.SphereGeometry(1,12,8):new THREE.CylinderGeometry(part.size[0],part.size[2],part.size[1],12);
+        add(geometry,paint,part.position,part.shape==='sphere'?part.size:[1,1,1],part.rotation || [0,0,0]);
+      }
+    });
+    activeProp = previousProp;
+  }
+  const clashesWithAuthored = (x,z,radius) => authoredFootprints.some(part=>Math.hypot(x-part.x,z-part.z)<radius+part.r+.25);
 
   if(!cityPlan){
   // Reserve the alpine skyline first, then let the village settle around it.
@@ -353,7 +377,9 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
     add(new THREE.CircleGeometry(1, 48), materials.pond, [x, .045, z], [3.3, 2.1, 1], [-Math.PI / 2, 0, .45]);
     for (let j = 0; j < 13; j++) {
       const a = j / 13 * Math.PI * 2;
-      ball(x + Math.cos(a) * 3.4, .17, z + Math.sin(a) * 2.28, range(.3, .53), .22, range(.22, .4), materials.stone, 8);
+      const px=x+Math.cos(a)*3.4,pz=z+Math.sin(a)*2.28;
+      const sx=range(.3,.53),sz=range(.22,.4);
+      if(!clashesWithAuthored(px,pz,Math.max(sx,sz)))ball(px,.17,pz,sx,.22,sz,materials.stone,8);
     }
     for (let j = 0; j < 4; j++) {
       const px = x + range(-1.8, 1.8), pz = z + range(-1.0, 1.0);
@@ -366,13 +392,13 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
   let trees = 0;
   for (let attempt = 0; attempt < 620 && trees < 92; attempt++) {
     const x = range(-56, 56), z = range(-39, 39), size = range(1.1, 2.2);
-    if (!clear(x, z, size * .52, .2)) continue;
+    if (!clear(x, z, size * .52, .2) || clashesWithAuthored(x,z,size*.77)) continue;
     tree(x, z, size, theme === 'alpine' ? rnd() < .78 : rnd() < .12);
     reserve(x, z, size * .43); trees++;
   }
   for (let attempt = 0; attempt < 170; attempt++) {
     const x = range(-53, 53), z = range(-38, 38);
-    if (!clear(x, z, .45)) continue;
+    if (!clear(x, z, .45) || clashesWithAuthored(x,z,.88)) continue;
     if (rnd() < .45) {
       ball(x, .32, z, .58, .35, .49, materials.lightLeaf, 8);
       ball(x + .34, .28, z + .17, .42, .3, .4, materials.leaf, 8);
@@ -486,6 +512,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
 
   }else{
     function urbanBuilding(x,z,w,d,h,index){
+      if(clashesWithAuthored(x,z,Math.hypot(w+.5,d+.5)*.5))return;
       const prop=createProp('building',x,z,Math.hypot(w,d)*.5,700+h*180,h+.8),before=activeProp;activeProp=prop;
       const historic=city.style==='historic',roofMat=index%3===0?materials.roof:materials.roof2;
       add(new THREE.BoxGeometry(w+.15,.23,d+.15),materials.stone,[x,.13,z]);
@@ -508,7 +535,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
         const p=cityPoint(block,.5,.5),sizeX=Math.abs(block.corners[1].x-block.corners[0].x)-7,sizeZ=Math.abs(block.corners[3].z-block.corners[0].z)-7;
         add(new THREE.BoxGeometry(sizeX,.035,sizeZ),materials.lightLeaf,[p.x,.018,p.z]);
         add(new THREE.BoxGeometry(.65,.05,sizeZ),materials.path,[p.x,.065,p.z]);
-        for(const side of [-1,1]){add(new THREE.BoxGeometry(1.2,.18,.35),materials.wood,[p.x+side*1.8,.39,p.z]);add(new THREE.BoxGeometry(1.2,.43,.10),materials.wood,[p.x+side*1.8,.65,p.z-.2]);}
+        for(const side of [-1,1]){if(clashesWithAuthored(p.x+side*1.8,p.z-.1,.7))continue;add(new THREE.BoxGeometry(1.2,.18,.35),materials.wood,[p.x+side*1.8,.39,p.z]);add(new THREE.BoxGeometry(1.2,.43,.10),materials.wood,[p.x+side*1.8,.65,p.z-.2]);}
         continue;
       }
       for(const u of [.30,.5,.70])for(const v of [.34,.66]){
@@ -522,13 +549,14 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
       const a=cityPlan.nodes[e.a],b=cityPlan.nodes[e.b],dx=(b.x-a.x)/e.length,dz=(b.z-a.z)/e.length;
       for(const t of [.27,.73]){
         const x=a.x+(b.x-a.x)*t+dz*(cityPlan.width*.5+.7),z=a.z+(b.z-a.z)*t-dx*(cityPlan.width*.5+.7);
+        if(clashesWithAuthored(x,z,.6))continue;
         const prop=createProp('tree',x,z,.17,75,2.8),before=activeProp;activeProp=prop;
         add(new THREE.CylinderGeometry(.055,.08,1.4,6),materials.trunk,[x,.7,z]);ball(x,1.9,z,.53,.85,.5,materials.leaf,8);activeProp=before;
       }
-      if(e.id%2===0){const x=(a.x+b.x)*.5-dz*(cityPlan.width*.5+.8),z=(a.z+b.z)*.5+dx*(cityPlan.width*.5+.8);add(new THREE.CylinderGeometry(.035,.055,3.2,6),materials.metal,[x,1.6,z]);ball(x,3.15,z,.13,.12,.13,materials.yellow,6);}
+      if(e.id%2===0){const x=(a.x+b.x)*.5-dz*(cityPlan.width*.5+.8),z=(a.z+b.z)*.5+dx*(cityPlan.width*.5+.8);if(!clashesWithAuthored(x,z,.13)){add(new THREE.CylinderGeometry(.035,.055,3.2,6),materials.metal,[x,1.6,z]);ball(x,3.15,z,.13,.12,.13,materials.yellow,6);}}
     }
     // Signals are part of the simulated street graph rather than scenery props.
-    for(const n of cityPlan.nodes){const x=n.x+cityPlan.width*.58,z=n.z+cityPlan.width*.58;add(new THREE.CylinderGeometry(.04,.06,2.3,6),materials.metal,[x,1.15,z]);add(new THREE.BoxGeometry(.22,.55,.2),materials.wood,[x,2.22,z]);}
+    for(const n of cityPlan.nodes){const x=n.x+cityPlan.width*.58,z=n.z+cityPlan.width*.58;if(clashesWithAuthored(x,z,.16))continue;add(new THREE.CylinderGeometry(.04,.06,2.3,6),materials.metal,[x,1.15,z]);add(new THREE.BoxGeometry(.22,.55,.2),materials.wood,[x,2.22,z]);}
   }
   for (const [material, geometries] of batches) {
     const geometry = merge(geometries);
@@ -817,5 +845,5 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
   }
   const pedestrianHomes = colliders.filter(c=>c.kind==='building').map(c=>({x:c.x,z:c.z,radius:c.radius}));
   const isWalkable = (x,z) => (cityPlan?Math.abs(x)<45&&Math.abs(z)<33&&(cityPlan.distanceToRoad(x,z)>cityPlan.width*.5+.2||cityPlan.crossing(x,z)):clear(x,z,.28,-.1))&&colliders.every(c=>!c.solid||c.held||c.y>1.5||Math.hypot(c.x-x,c.z-z)>c.radius+.3);
-  return { update, colliders, cityPlan, residentCount:city?.residents||36, pickProp, liftProp, moveProp, releaseProp, setInteractionHandlers:({vehicles,strike,react})=>{getVehicles=vehicles;strikeVehicle=strike;disturbance=react;}, applyImpact, damageAt, reset, configurePhysics, setWaterSampler:fn=>{waterSampler=fn;}, setGroundSampler, exportState, restoreState, pedestrianHomes, isWalkable, get debrisCount() { return debris.length; } };
+  return { update, colliders, cityPlan, residentCount:city?.residents??36, pickProp, liftProp, moveProp, releaseProp, setInteractionHandlers:({vehicles,strike,react})=>{getVehicles=vehicles;strikeVehicle=strike;disturbance=react;}, applyImpact, damageAt, reset, configurePhysics, setWaterSampler:fn=>{waterSampler=fn;}, setGroundSampler, exportState, restoreState, pedestrianHomes, isWalkable, get debrisCount() { return debris.length; } };
 }

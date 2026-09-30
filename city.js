@@ -52,10 +52,10 @@ export function buildCityRoads({group,plan,terrain}){
 /** Small local traffic on a connected graph, with signals, following distances, and recoverable throws. */
 const trafficLength=1.66,trafficWidth=.86;
 function trafficContact(a,b){
-  if(Math.abs(a.y-b.y)>.85)return null;
+  if(Math.abs(a.y-b.y)>Math.max(.85,a.collisionHeight??0,b.collisionHeight??0))return null;
   const dx=b.x-a.x,dz=b.z-a.z;if(dx*dx+dz*dz>12)return null;
   const basis=c=>[{x:Math.sin(c.heading),z:Math.cos(c.heading)},{x:Math.cos(c.heading),z:-Math.sin(c.heading)}];
-  const aa=basis(a),bb=basis(b),size=c=>c.id<10?[CAR_LENGTH,CAR_WIDTH]:[trafficLength,trafficWidth],as=size(a),bs=size(b);
+  const aa=basis(a),bb=basis(b),size=c=>c.id<10?[c.length??CAR_LENGTH,c.width??CAR_WIDTH]:[trafficLength,trafficWidth],as=size(a),bs=size(b);
   let depth=Infinity,normal;
   for(const axis of [...aa,...bb]){
     const projection=dx*axis.x+dz*axis.z;
@@ -157,7 +157,17 @@ export class CityTraffic {
       if(c.turning&&c.turnDistance>=path.length){c.previous=c.a;c.a=c.b;c.b=c.next;c.travel=path.r+c.turnDistance-path.length;c.turning=false;c.turnDistance=0;c.visits++;c.next=this.chooseNext(c);}
       this.position(c);
       const blocked=this.cars.some(o=>o!==c&&!o.held&&!o.airborne&&trafficContact(c,o))||racers.some(o=>!o.airborne&&trafficContact(c,o));
-      if(blocked){Object.assign(c,before);c.speed=c.vx=c.vz=0;}
+      if(blocked){
+        // A movement rollback must also undo a reservation acquired during
+        // that move. Otherwise the car forgets which junction it owns and
+        // leaves an invisible permanent obstruction for the other traffic.
+        if(c.junction!==before.junction&&this.locks.get(c.junction)===c.id)this.locks.delete(c.junction);
+        Object.assign(c,before);
+        // A priority racer may have released the previous reservation before
+        // the collision check. Do not restore ownership that no longer exists.
+        if(c.junction>=0&&this.locks.get(c.junction)!==c.id)c.junction=-1;
+        c.speed=c.vx=c.vz=0;
+      }
       c.wheelAngle+=c.speed*dt/.18;c.wait=target===0||blocked?c.wait+dt:0;
       // A blocked exit can be rerouted while still on the approach lane.
       if(c.wait>15&&!c.turning&&c.junction===c.b){c.next=this.chooseNext(c);c.wait=0;}
@@ -169,7 +179,7 @@ export class CityTraffic {
 }
 
 export function createCityTraffic({group,plan,terrain,scenery}){
-  const traffic=new CityTraffic({plan,count:plan.config.traffic||28,seed:plan.config.seed||17,groundAt:(x,z)=>terrain.heightAt(x,z),obstacles:()=>scenery.colliders,strike:(...args)=>scenery.applyImpact(...args)});
+  const traffic=new CityTraffic({plan,count:plan.config.traffic??28,seed:plan.config.seed??17,groundAt:(x,z)=>terrain.heightAt(x,z),obstacles:()=>scenery.colliders,strike:(...args)=>scenery.applyImpact(...args)});
   const root=new THREE.Group();root.name='City traffic';group.add(root);
   const mat=new THREE.MeshStandardMaterial({roughness:.64});
   const count=traffic.cars.length;
@@ -177,7 +187,7 @@ export function createCityTraffic({group,plan,terrain,scenery}){
   const body=part('City car bodies',new THREE.BoxGeometry(.86,.36,1.66),count),roof=part('City car windows',new THREE.BoxGeometry(.7,.29,.75),count),wheels=part('City car wheels',new THREE.CylinderGeometry(.18,.18,.11,8),count*4);
   const colors=['#bf7860','#839e9a','#dcbb75','#718996','#b693a6','#dcd5bc'];const dummy=new THREE.Object3D();
   for(let i=0;i<count;i++){roof.setColorAt(i,new THREE.Color('#54736f'));for(let j=0;j<4;j++)wheels.setColorAt(i*4+j,new THREE.Color('#35413b'));}
-  function render(){traffic.cars.forEach((c,i)=>{dummy.position.set(c.x,c.y+.3,c.z);dummy.rotation.set(0,c.heading,0);dummy.scale.setScalar(1);dummy.updateMatrix();body.setMatrixAt(i,dummy.matrix);body.setColorAt(i,new THREE.Color(colors[i%colors.length]).multiplyScalar(.7+c.health*.3));dummy.position.y+=.27;dummy.updateMatrix();roof.setMatrixAt(i,dummy.matrix);for(let j=0;j<4;j++){const x=(j%2?1:-1)*.47,z=(j<2?1:-1)*.5;dummy.position.set(c.x+Math.cos(c.heading)*x+Math.sin(c.heading)*z,c.y+.18,c.z-Math.sin(c.heading)*x+Math.cos(c.heading)*z);dummy.rotation.set(0,c.heading,Math.PI/2);dummy.updateMatrix();wheels.setMatrixAt(i*4+j,dummy.matrix);}});for(const m of root.children){m.instanceMatrix.needsUpdate=true;m.computeBoundingSphere();}body.instanceColor.needsUpdate=true;}
+  function render(){traffic.cars.forEach((c,i)=>{dummy.position.set(c.x,c.y+.3,c.z);dummy.rotation.set(0,c.heading,0);dummy.scale.setScalar(1);dummy.updateMatrix();body.setMatrixAt(i,dummy.matrix);body.setColorAt(i,new THREE.Color(colors[i%colors.length]).multiplyScalar(.7+c.health*.3));dummy.position.y+=.27;dummy.updateMatrix();roof.setMatrixAt(i,dummy.matrix);for(let j=0;j<4;j++){const x=(j%2?1:-1)*.47,z=(j<2?1:-1)*.5;dummy.position.set(c.x+Math.cos(c.heading)*x+Math.sin(c.heading)*z,c.y+.18,c.z-Math.sin(c.heading)*x+Math.cos(c.heading)*z);dummy.rotation.set(0,c.heading,Math.PI/2);dummy.updateMatrix();wheels.setMatrixAt(i*4+j,dummy.matrix);}});for(const m of root.children){m.instanceMatrix.needsUpdate=true;m.computeBoundingSphere();}if(body.instanceColor)body.instanceColor.needsUpdate=true;}
   function pick(hit){return traffic.cars[hit.object===wheels?Math.floor(hit.instanceId/4):hit.instanceId]?.id;}
   render();return{model:traffic,cars:traffic.cars,targets:[body,roof,wheels],pick,update:(dt,cars,gravity)=>{traffic.update(dt,cars,gravity);render();},reset:()=>{traffic.reset();render();},exportState:()=>traffic.exportState(),restoreState:s=>{const r=traffic.restoreState(s);render();return r;},get stats(){return{vehicles:count,intersections:plan.nodes.length,blocks:plan.blocks.length};}};
 }

@@ -10,7 +10,7 @@ Open `index.html` directly in a modern browser. It is a portable offline build w
 
 ## Explore
 
-- Choose among **18 worlds: 15 circuits and 3 dense cities** with miniature route previews. The chooser freezes the race while open, then restores your previous pause state.
+- Choose among **20 worlds: 16 circuits and 4 dense cities** with miniature route previews. The chooser freezes the race while open, then restores your previous pause state.
 - **Foundry City, Old Quarter and Garden Metro** send the ten racers through downtown and neighborhood streets, with rounded junction turns and local traffic. Foundry is the starting world for new visitors.
 - **Pebble Bay, Clover Hills and Sundown Valley** retain the original coastal, hill and evening worlds.
 - **Meadow Oval, Orchard Square, Crescent Cove, Fern Switchbacks, Lantern Point, Lucky Clover, Seabreeze Sprint, Highland Ribbon, Lagoon Keyhole, Amber Chicane, Summit Loop and Dusk Run** add twelve different centerlines, including long straights, linked bends, narrow loops and elevated sections.
@@ -71,7 +71,22 @@ Car contacts use oriented rectangles, contact impulses, angular response, fricti
 
 This is a stylized physics model for a miniature world. It is not calibrated to a particular real vehicle, and the procedural panel deformation is not a finite element or soft-body crash simulation. Terrain is a bounded height field, so it supports craters and hills rather than caves or arbitrary topology. Decorative hills are scenery; river maps use a depth-averaged 1D channel flow model with gravity, discharge, hydrostatic pressure, terrain-driven dam response, and visible advection. Boats and wooden debris respond to buoyancy and current; stone sinks. Ocean currents and waves are approximations, not a full 3D fluid solver. Buildings and trees have simplified colliders. Debris has its own gravity and ground contact model.
 
-## Develop
+## Create content with AI coding agents
+
+Add maps, cars, and physical scenery through JSON packs without editing the engine. The [content framework](docs/CONTENT_FRAMEWORK.md), [versioned schema](schemas/content-pack.schema.json), [working starter](content/packs/starter-kit.json), and [agent prompt](docs/AI_CONTENT_PROMPT.md) provide the contract and examples.
+
+```sh
+npm run content:new -- my-worlds
+npm run content:check -- --json
+npm run content:check -- --smoke
+npm run content:preview
+npm test
+npm run build
+```
+
+Packs are discovered automatically and bundled into the offline game. Custom cars include roadster, coupe, and pickup models with matching physical dimensions; authored props use the existing grabbing, damage, and persistence system. Check previews and browser play after validation. See [AGENTS.md](AGENTS.md) for the concise authoring workflow.
+
+## Develop locally
 
 ```sh
 npm ci
@@ -87,7 +102,7 @@ Open `http://127.0.0.1:8765`. The local server command requires Python 3. Rebuil
 | `app.js` | Scene, cameras, UI and system integration |
 | `race.js` | Vehicle dynamics, contacts, driving AI and lap timing |
 | `driving-input.js` | Transient keyboard and multi-touch player controls |
-| `cars.js` | Rounded roadsters, directional damage and smoke |
+| `cars.js` | Roadster, coupe and pickup models, directional damage and smoke |
 | `scenery.js` | Village, vegetation, animation, destructible props and debris |
 | `terrain.js` | Mutable height field, road deformation and surface sampling |
 | `devtools.js` | God tools, physics controls and live inspection |
@@ -96,9 +111,10 @@ Open `http://127.0.0.1:8765`. The local server command requires Python 3. Rebuil
 | `persistence.js` | Validated browser saves and restoration |
 | `tracks.js` | Shared circuit definitions |
 | `track.js` | Rounded street routes and island circuit sampling |
-| `build.mjs` | Portable offline build |
+| `content/`, `schemas/`, `tools/content.mjs` | Content packs, validation, scaffolding and previews |
+| `build.mjs` | Validated content discovery and portable offline build |
 
-Tests run 180-second autonomous races on all 18 worlds and cover vehicle dynamics and collision damage, model deformation and exact repair, terrain and roadway displacement, destructible scenery, family reactions, adult throws and recovery, movable building damage, and save restoration. GitHub Actions runs the tests and verifies that the committed offline build matches the source.
+Tests run 180-second autonomous races on the 18 stock worlds and independently audit routes and 120-second driving on all 20 installed worlds and cover vehicle dynamics and collision damage, model deformation and exact repair, terrain and roadway displacement, destructible scenery, family reactions, adult throws and recovery, movable building damage, and save restoration. GitHub Actions runs the tests and verifies that the committed offline build matches the source.
 
 ## Reference
 
