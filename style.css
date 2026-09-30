@@ -50,6 +50,14 @@ body.driving-mode .hint{visibility:hidden}
  body.driving-mode #selected{left:16px;right:16px;width:auto;bottom:302px;max-height:210px;overflow:auto}
  body.driving-mode .standings #leaderboard{max-height:max(0px,calc(100dvh - 784px))}
 }
+/* Embedded portrait frames leave the driving actions visible without stacking panels. */
+@media(max-width:800px) and (min-height:561px) and (max-height:760px){
+ body.driving-mode #selected,body.driving-mode .standings{display:none}
+}
+@media(max-width:319px){
+ .race-mood{display:none}
+ .driving-controls{left:8px;right:8px;padding:10px}
+}
 @media(min-width:701px) and (max-height:560px){
  body.driving-mode #selected{left:20px;right:auto;top:105px;bottom:auto;width:205px;max-height:calc(100dvh - 211px);padding:10px 13px 0;overflow:auto}
  body.driving-mode #selected .selected-name{margin-top:5px}
