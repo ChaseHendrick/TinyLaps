@@ -176,6 +176,20 @@ test('unknown fields and resource URLs are refused at every authored level', () 
   ];
   for (const [change, path] of mutations) rejected(altered(change), path, /Unknown field/);
 });
+test('display text cannot be whitespace-only or pass validation then fail roster creation', () => {
+  for (const change of [
+    p => { p.name = '   '; },
+    p => { p.maps[0].name = '\t'; },
+    p => { p.maps[0].description = '\n '; },
+    p => { p.cars[0].name = '   '; },
+    p => { p.cars[0].personality.label = ' '; },
+    p => { p.cars[0].personality.description = '  '; },
+  ]) {
+    const bad = altered(change);
+    assert.equal(validateContentPack(bad).valid, false);
+    assert.throws(() => createContentCatalog(TRACKS, CAR_PROFILES, [bad]), ContentValidationError);
+  }
+});
 test('non-finite and out-of-range numeric inputs are refused', () => {
   for (const value of [Infinity, -Infinity, NaN]) rejected(altered(pack => { pack.cars[0].topSpeed = value; }), '.topSpeed', /finite/);
   for (const [field, value] of [['topSpeed', 33], ['cornering', 4], ['acceleration', 11], ['mass', 1201]]) rejected(altered(pack => { pack.cars[0][field] = value; }), `.${field}`, /at (least|most)/);

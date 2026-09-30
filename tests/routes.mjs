@@ -1,16 +1,15 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { TRACKS } from '../tracks.js';
-import { CAR_PROFILES, RaceSimulation } from '../race.js';
+import { RaceSimulation } from '../race.js';
 import { buildTrack } from '../track.js';
 import { createCityPlan, CityTraffic, buildCityRoads } from '../city.js';
-import { createContentCatalog } from '../content/index.js';
+import { readContentPacks } from '../tools/content.mjs';
 import { buildScenery } from '../scenery.js';
 import { TerrainSystem } from '../terrain.js';
 
-const pack = JSON.parse(await readFile(new URL('../content/packs/starter-kit.json', import.meta.url), 'utf8'));
-const catalog = createContentCatalog(TRACKS, CAR_PROFILES, [pack]);
+// Audit every installed pack, including content added after the starter.
+const { catalog } = await readContentPacks();
 const reports = [];
 const dispose = group => group.traverse(object => {
   object.geometry?.dispose();
