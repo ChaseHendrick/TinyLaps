@@ -8,8 +8,8 @@ const smoothStep = (a, b, value) => {
 
 /** A mutable height field. Heights are world-space offsets from the original island. */
 export class TerrainSystem {
-  constructor({ group, grassColor = 0x91b889, sandColor = 0xd8c19a, radiusX = 64, radiusZ = 47 } = {}) {
-    this.radiusX = radiusX;
+  constructor({ group, grassColor = 0x91b889, sandColor = 0xd8c19a, radiusX = 64, radiusZ = 47, shape = 'island' } = {}) {
+    this.radiusX = radiusX;this.shape=shape;
     this.radiusZ = radiusZ;
     this.columns = 160;
     this.rows = 120;
@@ -41,6 +41,7 @@ export class TerrainSystem {
   }
 
   contains(x, z) {
+    if(this.shape==='tile'){const dx=Math.max(0,Math.abs(x)-(this.radiusX-6)),dz=Math.max(0,Math.abs(z)-(this.radiusZ-6));return Math.hypot(dx,dz)<=6;}
     const nx = x / this.radiusX;
     const nz = z / this.radiusZ;
     const angle = Math.atan2(nz, nx);

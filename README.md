@@ -10,7 +10,7 @@ Open `index.html` directly in a modern browser. It is a portable offline build w
 
 ## Explore
 
-- Choose among **15 circuits** with miniature route previews. The chooser freezes the race while open, then restores your previous pause state.
+- Choose among **18 worlds: 15 circuits and 3 dense cities** with miniature route previews. The chooser freezes the race while open, then restores your previous pause state.
 - **Pebble Bay, Clover Hills and Sundown Valley** retain the original coastal, hill and evening worlds.
 - **Meadow Oval, Orchard Square, Crescent Cove, Fern Switchbacks, Lantern Point, Lucky Clover, Seabreeze Sprint, Highland Ribbon, Lagoon Keyhole, Amber Chicane, Summit Loop and Dusk Run** add twelve different centerlines, including long straights, linked bends, narrow loops and elevated sections.
 - Drag to orbit, scroll or pinch to zoom, and use the zoom buttons for close views.
@@ -54,7 +54,7 @@ The villages have 36 residents, including families. Adults and children walk aro
 | `Alt` + `M` | Open the circuit chooser |
 | `Escape` | Close god tools and return to exploration |
 
-Your current circuit and race save automatically in this browser every 2.5 seconds and when you leave. Saves retain lap progress, car damage, sculpted terrain, scenery damage and moved buildings, residents and their recovery, barriers, camera, and control settings. Reopening restores that race without advancing it while the page was closed. Restart deliberately clears race and world damage. If browser storage is unavailable, the game reports that the race is limited to the current session.
+Your current circuit and race save automatically in this browser every 2.5 seconds and when you leave. Saves retain lap progress, car damage, sculpted terrain, scenery damage and moved buildings, residents and their recovery, barriers, city traffic, water flow, camera, and control settings. Reopening restores that race without advancing it while the page was closed. Restart deliberately clears race and world damage. If browser storage is unavailable, the game reports that the race is limited to the current session.
 
 Optional ambient audio starts only after you enable it. The camera button saves a postcard of the current view. Fullscreen uses the browser's fullscreen feature.
 
@@ -64,7 +64,7 @@ The scene is procedurally modeled with Three.js. The camera adjusts its near pla
 
 Car contacts use oriented rectangles, contact impulses, angular response, friction and penetration correction. Throws and shockwaves can launch cars into ballistic flight, with gravity, air drag, height-aware contacts and landing damage. Tire forces stop while a car is airborne. Scenery uses approximate circular colliders. Grabbed buildings and props move under gravity, collide with scenery and cars, and collapse into bounded debris after hard impacts. Pedestrians use a walkable path graph with simple body trajectories and joint poses. Impact severity accumulates directional body damage and reduces engine power, tire stiffness and grip. World damage shares the vehicle simulation's surface and obstacle data.
 
-This is a stylized physics model for a miniature world. It is not calibrated to a particular real vehicle, and the procedural panel deformation is not a finite element or soft-body crash simulation. Terrain is a bounded height field, so it supports craters and hills rather than caves or arbitrary topology. Decorative hills and water are scenery; buildings and trees have simplified colliders. Debris has its own gravity and ground contact model.
+This is a stylized physics model for a miniature world. It is not calibrated to a particular real vehicle, and the procedural panel deformation is not a finite element or soft-body crash simulation. Terrain is a bounded height field, so it supports craters and hills rather than caves or arbitrary topology. Decorative hills are scenery; river maps use a depth-averaged 1D channel flow model with gravity, discharge, hydrostatic pressure, terrain-driven dam response, and visible advection. Boats and wooden debris respond to buoyancy and current; stone sinks. Ocean currents and waves are approximations, not a full 3D fluid solver. Buildings and trees have simplified colliders. Debris has its own gravity and ground contact model.
 
 ## Develop
 
@@ -91,10 +91,14 @@ Open `http://127.0.0.1:8765`. The local server command requires Python 3. Rebuil
 | `tracks.js` | Shared circuit definitions |
 | `build.mjs` | Portable offline build |
 
-Tests run 180-second autonomous races on all 15 circuits and cover vehicle dynamics and collision damage, model deformation and exact repair, terrain and roadway displacement, destructible scenery, family reactions, adult throws and recovery, movable building damage, and save restoration. GitHub Actions runs the tests and verifies that the committed offline build matches the source.
+Tests run 180-second autonomous races on all 18 worlds and cover vehicle dynamics and collision damage, model deformation and exact repair, terrain and roadway displacement, destructible scenery, family reactions, adult throws and recovery, movable building damage, and save restoration. GitHub Actions runs the tests and verifies that the committed offline build matches the source.
 
 ## Reference
 
 Inspired by the miniature-world racing concept in [Christopher J. DiMarco's video](https://x.com/chrisjdimarco/status/2104598205417591120). The scene, vehicle meshes and implementation here are original procedural work. No media or source code from that demonstration is included.
 
 Third-party licensing is recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## City districts
+
+Foundry City, Old Quarter, and Garden Metro add 84 to 114 buildings, 25 to 30 connected intersections, 24 to 28 local vehicles, parks, crossings, signals, and 108 residents per world. These are original fictional districts rather than maps of real places. Local traffic follows the road graph, obeys phased signals, and can reroute when a queue remains blocked. Its cars share the grab and throw controls.

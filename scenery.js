@@ -1,15 +1,18 @@
 import * as THREE from 'three';
+import { floatForce } from './water.js';
+import { createCityPlan, cityPoint } from './city.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // A small model-making kit. Static pieces are baked together by material so
 // trees, roof tiles, window frames and flower patches stay inexpensive to draw.
-export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme === 'harbor', samples, seed = 17 }) {
+export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme === 'harbor', samples, seed = 17, city = null }) {
   const palettes = {
     harbor: { grass: '#9caf83', dark: '#50766b', leaf: '#78987a', light: '#bac89b', roof: '#bd775f', roof2: '#667e8b', wall: '#f3e6ca', wall2: '#dfb798', accent: '#e29c76', pond: '#83beb8', hill: '#96ad83' },
     alpine: { grass: '#98ad89', dark: '#4e776e', leaf: '#709382', light: '#b1c399', roof: '#967365', roof2: '#627b82', wall: '#f0e5ce', wall2: '#c7bda4', accent: '#d9a17e', pond: '#8bbdc1', hill: '#9bac8e' },
     sunset: { grass: '#acb68b', dark: '#697f70', leaf: '#8b9c7b', light: '#c7cb9f', roof: '#bc7979', roof2: '#877d98', wall: '#f7e4cd', wall2: '#e5c09e', accent: '#eba58c', pond: '#a9b7c8', hill: '#aab690' },
   };
+  const cityPlan=city?createCityPlan(city):null;
   const p = palettes[theme] || palettes.harbor;
   let state = seed >>> 0;
   const rnd = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296; };
@@ -34,6 +37,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
   let previousTime = 0;
   let getVehicles=()=>[], strikeVehicle=()=>{}, disturbance=()=>{};
   const physics = { gravity: 9.81, restitution: .26 };
+  let waterSampler=null;
   let groundSampler = (x, z) => x * x / (64 * 64) + z * z / (47 * 47) < 1 ? 0 : -3;
   const dynamic = new THREE.Group();
   group.add(dynamic);
@@ -152,6 +156,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
     activeProp = beforeProp;
   }
 
+  if(!cityPlan){
   // Reserve the alpine skyline first, then let the village settle around it.
   const alpineHills = [];
   if (theme === 'alpine') {
@@ -479,6 +484,52 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
     sailboat(68, 24, 2.3, p.accent, 2.8);
   }
 
+  }else{
+    function urbanBuilding(x,z,w,d,h,index){
+      const prop=createProp('building',x,z,Math.hypot(w,d)*.5,700+h*180,h+.8),before=activeProp;activeProp=prop;
+      const historic=city.style==='historic',roofMat=index%3===0?materials.roof:materials.roof2;
+      add(new THREE.BoxGeometry(w+.15,.23,d+.15),materials.stone,[x,.13,z]);
+      add(new THREE.BoxGeometry(w,h,d),index%4===0?materials.ochre:materials.cream,[x,h*.5+.22,z]);
+      if(historic||h<4.2)inFrame(x,0,z,0,()=>gable(w+.24,.65,d+.23,roofMat,h+.21));
+      else {add(new THREE.BoxGeometry(w+.13,.19,d+.13),roofMat,[x,h+.31,z]);add(new THREE.BoxGeometry(w*.35,.34,d*.25),materials.metal,[x+w*.2,h+.55,z]);}
+      const floors=Math.floor(h/1.15);
+      for(let level=0;level<floors;level++)for(const side of [-1,1]){
+        const y=.95+level*1.12;
+        for(const off of [-.26,.26])add(new THREE.BoxGeometry(w*.18,.52,.035),materials.glass,[x+off*w,y,z+side*(d*.5+.024)]);
+        add(new THREE.BoxGeometry(.035,.52,d*.34),materials.glass,[x+side*(w*.5+.024),y,z]);
+      }
+      add(new THREE.BoxGeometry(.38,.68,.045),materials.wood,[x,.57,z+d*.5+.035]);
+      if(index%5===0)add(new THREE.BoxGeometry(w*.9,.15,.35),materials.coral,[x,.95,z+d*.5+.18]);
+      activeProp=before;
+    }
+    let building=0;
+    for(const block of cityPlan.blocks){
+      if(block.park){
+        const p=cityPoint(block,.5,.5),sizeX=Math.abs(block.corners[1].x-block.corners[0].x)-7,sizeZ=Math.abs(block.corners[3].z-block.corners[0].z)-7;
+        add(new THREE.BoxGeometry(sizeX,.035,sizeZ),materials.lightLeaf,[p.x,.018,p.z]);
+        add(new THREE.BoxGeometry(.65,.05,sizeZ),materials.path,[p.x,.065,p.z]);
+        for(const side of [-1,1]){add(new THREE.BoxGeometry(1.2,.18,.35),materials.wood,[p.x+side*1.8,.39,p.z]);add(new THREE.BoxGeometry(1.2,.43,.10),materials.wood,[p.x+side*1.8,.65,p.z-.2]);}
+        continue;
+      }
+      for(const u of [.30,.5,.70])for(const v of [.34,.66]){
+        const p=cityPoint(block,u,v),w=2.15+range(-.15,.17),d=2.45+range(-.12,.15);
+        const downtown=city.style==='modern'&&block.i>=2&&block.j<=1||city.style==='garden'&&block.i>=2&&block.j>=2;
+        const h=city.style==='historic'?range(2.7,5):downtown?range(6,12.5):range(2.5,5.5);
+        urbanBuilding(p.x,p.z,w,d,h,building++);
+      }
+    }
+    for(const e of cityPlan.edges){
+      const a=cityPlan.nodes[e.a],b=cityPlan.nodes[e.b],dx=(b.x-a.x)/e.length,dz=(b.z-a.z)/e.length;
+      for(const t of [.27,.73]){
+        const x=a.x+(b.x-a.x)*t+dz*(cityPlan.width*.5+.7),z=a.z+(b.z-a.z)*t-dx*(cityPlan.width*.5+.7);
+        const prop=createProp('tree',x,z,.17,75,2.8),before=activeProp;activeProp=prop;
+        add(new THREE.CylinderGeometry(.055,.08,1.4,6),materials.trunk,[x,.7,z]);ball(x,1.9,z,.53,.85,.5,materials.leaf,8);activeProp=before;
+      }
+      if(e.id%2===0){const x=(a.x+b.x)*.5-dz*(cityPlan.width*.5+.8),z=(a.z+b.z)*.5+dx*(cityPlan.width*.5+.8);add(new THREE.CylinderGeometry(.035,.055,3.2,6),materials.metal,[x,1.6,z]);ball(x,3.15,z,.13,.12,.13,materials.yellow,6);}
+    }
+    // Signals are part of the simulated street graph rather than scenery props.
+    for(const n of cityPlan.nodes){const x=n.x+cityPlan.width*.58,z=n.z+cityPlan.width*.58;add(new THREE.CylinderGeometry(.04,.06,2.3,6),materials.metal,[x,1.15,z]);add(new THREE.BoxGeometry(.22,.55,.2),materials.wood,[x,2.22,z]);}
+  }
   for (const [material, geometries] of batches) {
     const geometry = merge(geometries);
     if (!geometry) continue;
@@ -630,7 +681,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
     const c=prop.collider;if(prop.held||!prop.moving||step<=0)return;
     const substeps=Math.max(1,Math.ceil(step/.016)),dt=step/substeps;
     for(let i=0;i<substeps;i++){
-      prop.cooldown=Math.max(0,prop.cooldown-dt);prop.vy-=physics.gravity*dt;prop.vx*=Math.exp(-dt*.2);prop.vz*=Math.exp(-dt*.2);
+      prop.cooldown=Math.max(0,prop.cooldown-dt);prop.vy-=physics.gravity*dt;const wet=waterSampler?.(c.x,c.z);if(wet)floatForce({get y(){return c.y},get vy(){return prop.vy},set vy(v){prop.vy=v},get vx(){return prop.vx},set vx(v){prop.vx=v},get vz(){return prop.vz},set vz(v){prop.vz=v}},wet,dt,physics.gravity,c.kind==='boat'?.24:.7,c.kind==='boat'||c.kind==='tree'?1:.2);prop.vx*=Math.exp(-dt*.2);prop.vz*=Math.exp(-dt*.2);
       c.x+=prop.vx*dt;c.y+=prop.vy*dt;c.z+=prop.vz*dt;prop.dirty=true;
       for(const other of colliders){
         if(other===c||other.health<=0||other.held||c.y>other.y+other.height||c.y+c.height<other.y)continue;
@@ -659,6 +710,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
     const step = Math.min(.10, Math.max(0, dt));
     for (const prop of props.values()) {
       const c = prop.collider;
+      if(waterSampler&&c.kind==='boat'&&!prop.held)prop.moving=true;
       translateProp(prop,step);
       if(prop.dynamic.length&&Math.hypot(c.x-prop.origin.x,c.y-prop.origin.y,c.z-prop.origin.z)>.001)prop.dirty=true;
       if (c.health === 1 && !prop.dirty) continue;
@@ -689,6 +741,7 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
       if (step > 0 && body.sleeping && Math.abs(body.y - groundSampler(body.x, body.z) - body.radius) > .045) body.sleeping = false;
       if (step > 0 && !body.sleeping) {
         body.vy -= physics.gravity * step;
+        const wet=waterSampler?.(body.x,body.z);if(wet)floatForce(body,wet,step,physics.gravity,body.radius*.8,body.type===0?1:.15);
         const airDrag = Math.exp(-step * .13); body.vx *= airDrag; body.vz *= airDrag;
         body.x += body.vx * step; body.y += body.vy * step; body.z += body.vz * step;
         body.rx += body.wx * step; body.ry += body.wy * step; body.rz += body.wz * step;
@@ -725,7 +778,8 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
   const setGroundSampler = fn => {
     if (typeof fn !== 'function') return;
     groundSampler = (x, z) => {
-      if (x * x / (64 * 64) + z * z / (47 * 47) > 1) return -3;
+      const wet=waterSampler?.(x,z);if(wet&&wet.depth>.08)return wet.bed;
+      if(cityPlan?Math.abs(x)>64||Math.abs(z)>47:x*x/(64*64)+z*z/(47*47)>1)return -3;
       const height = fn(x, z); return Number.isFinite(height) ? height : 0;
     };
   };
@@ -762,6 +816,6 @@ export function buildScenery({ group, theme = 'harbor', river:hasRiver = theme =
     return true;
   }
   const pedestrianHomes = colliders.filter(c=>c.kind==='building').map(c=>({x:c.x,z:c.z,radius:c.radius}));
-  const isWalkable = (x,z) => clear(x,z,.28,-.1)&&colliders.every(c=>!c.solid||c.held||c.y>1.5||Math.hypot(c.x-x,c.z-z)>c.radius+.3);
-  return { update, colliders, pickProp, liftProp, moveProp, releaseProp, setInteractionHandlers:({vehicles,strike,react})=>{getVehicles=vehicles;strikeVehicle=strike;disturbance=react;}, applyImpact, damageAt, reset, configurePhysics, setGroundSampler, exportState, restoreState, pedestrianHomes, isWalkable, get debrisCount() { return debris.length; } };
+  const isWalkable = (x,z) => (cityPlan?Math.abs(x)<45&&Math.abs(z)<33&&(cityPlan.distanceToRoad(x,z)>cityPlan.width*.5+.2||cityPlan.crossing(x,z)):clear(x,z,.28,-.1))&&colliders.every(c=>!c.solid||c.held||c.y>1.5||Math.hypot(c.x-x,c.z-z)>c.radius+.3);
+  return { update, colliders, cityPlan, residentCount:city?.residents||36, pickProp, liftProp, moveProp, releaseProp, setInteractionHandlers:({vehicles,strike,react})=>{getVehicles=vehicles;strikeVehicle=strike;disturbance=react;}, applyImpact, damageAt, reset, configurePhysics, setWaterSampler:fn=>{waterSampler=fn;}, setGroundSampler, exportState, restoreState, pedestrianHomes, isWalkable, get debrisCount() { return debris.length; } };
 }

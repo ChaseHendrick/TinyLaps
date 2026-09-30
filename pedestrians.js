@@ -21,7 +21,7 @@ export class TownCrowd {
     this.people = [];
     if (!available.length || !homes.length) return;
     for (let id = 0; id < count; id++) {
-      const home = homes[Math.floor(id/4) % homes.length];
+      const home = homes[Math.floor(Math.floor(id/4)/Math.ceil(count/4)*homes.length)];
       const nearby = available.filter(({node})=>Math.hypot(node.x-home.x,node.z-home.z)<12);
       const choices = nearby.length ? nearby : available;
       let {node,index} = choices[Math.floor(this.random()*choices.length)];
@@ -129,7 +129,7 @@ export class TownCrowd {
 
 /** Instancing keeps the whole town to nine draw calls. */
 export function createPedestrians({group,scenery,terrain,seed=17}) {
-  const crowd=new TownCrowd({walkable:scenery.isWalkable,homes:scenery.pedestrianHomes,seed,count:36,groundAt:(x,z)=>terrain.heightAt(x,z),obstacles:()=>scenery.colliders});
+  const crowd=new TownCrowd({walkable:scenery.isWalkable,homes:scenery.pedestrianHomes,seed,count:scenery.residentCount||36,groundAt:(x,z)=>terrain.heightAt(x,z),obstacles:()=>scenery.colliders});
   const count=crowd.people.length;
   const root=new THREE.Group();root.name='Town life';group.add(root);
   const material=new THREE.MeshStandardMaterial({roughness:.9});

@@ -43,21 +43,21 @@ export function setupDevTools(api) {
   panel.querySelector('#dev-time').oninput=e=>{const v=Number(e.target.value);api.setSpeed(v);panel.querySelector('#dev-time-output').textContent=v+'×'};
   panel.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>{const sim=api.getSim(),c=sim.cars[api.getSelected()];switch(b.dataset.action){case'boost':sim.applyImpulse(c.id,{x:Math.sin(c.heading)*(c.mass||700)*12,z:Math.cos(c.heading)*(c.mass||700)*12});break;case'spin':sim.applyImpulse(c.id,{x:Math.cos(c.heading)*(c.mass||700)*6,z:-Math.sin(c.heading)*(c.mass||700)*6},{x:c.x+Math.sin(c.heading)*.8,z:c.z+Math.cos(c.heading)*.8});break;case'repair-car':sim.repairCar(c.id);api.toast(`${c.name} is freshly repaired`);break;case'restore':api.restoreWorld();setTool('explore');api.toast('The little world is whole again');break;case'pause':api.togglePause();break;case'default-physics':for(const [key,,,,,value,unit] of configs){controls[key].value=value;controls[key].parentElement.querySelector('output').textContent=value+' '+unit}sim.configurePhysics(Object.fromEntries(configs.map(c=>[c[0],c[5]])));break}});
   function pointAt(e){const rect=api.getCanvas().getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);raycaster.setFromCamera(pointer,api.getCamera());if(held!==null)return raycaster.ray.intersectPlane(dragPlane,hitPoint)?hitPoint.clone():null;const terrain=api.getTerrain();const hit=raycaster.intersectObject(terrain.mesh,false)[0];if(hit)return hit.point.clone();return raycaster.ray.intersectPlane(ground,hitPoint)?hitPoint.clone():null}
-  function shockwave(x,z,energy=1,r=radius*2.2){api.getPeople().blast(x,z,r,energy);const sim=api.getSim();for(const c of sim.cars){const dx=c.x-x,dz=c.z-z,d=Math.hypot(dx,dz);if(d>r)continue;const force=(c.mass||700)*energy*13*(1-d/r),inv=1/Math.max(d,.1);sim.applyImpulse(c.id,{x:dx*inv*force,z:dz*inv*force,y:force*.3})}api.damageWorld(x,z,r,energy*18000);api.getTerrain().impact(x,z,energy,radius);api.refreshTerrain();}
+  function shockwave(x,z,energy=1,r=radius*2.2){api.getPeople().blast(x,z,r,energy);const sim=api.getSim();for(const c of api.getAllCars()){const dx=c.x-x,dz=c.z-z,d=Math.hypot(dx,dz);if(d>r)continue;const force=(c.mass||700)*energy*13*(1-d/r),inv=1/Math.max(d,.1);api.applyImpulse(c.id,{x:dx*inv*force,z:dz*inv*force,y:force*.3})}api.damageWorld(x,z,r,energy*18000);api.getTerrain().impact(x,z,energy,radius);api.refreshTerrain();}
   function applyTool(p){const terrain=api.getTerrain();api.reactPeople(p.x,p.z,tool==='meteor'?23:radius+8,tool==='repair'?'repair':tool);if(tool==='meteor'){if(meteors.length>=12){meteors[0].mesh.removeFromParent();meteors.shift()}const ball=new THREE.Mesh(meteorGeometry,meteorMaterial);ball.position.set(p.x,28,p.z);ball.castShadow=true;api.getWorld().add(ball);meteors.push({mesh:ball,vy:0,life:0})}else if(tool==='shockwave')shockwave(p.x,p.z,1.1);else if(tool==='raise')terrain.sculpt(p.x,p.z,.45,radius);else if(tool==='lower')terrain.sculpt(p.x,p.z,-.45,radius);else if(tool==='repair')terrain.repairAt(p.x,p.z,radius);api.refreshTerrain()}
   const canvas=api.getCanvas();
-  function heldBody(){return held?.kind==='car'?api.getSim().cars[held.id]:held?.kind==='person'?api.getPeople().crowd.people[held.id]:api.getScenery().colliders.find(c=>c.id===held?.id);}
+  function heldBody(){return held?.kind==='car'?api.getCar(held.id):held?.kind==='person'?api.getPeople().crowd.people[held.id]:api.getScenery().colliders.find(c=>c.id===held?.id);}
   canvas.addEventListener('pointerdown',e=>{
     if(!active||e.button!==0)return;e.preventDefault();e.stopImmediatePropagation();const p=pointAt(e);if(!p)return;
     if(tool==='throw'){
       let body=null;
-      if(grabKind==='car'){const hit=raycaster.intersectObjects(api.getCarMeshes(),false)[0];if(hit){body=api.getSim().cars[hit.object.userData.carId];held={kind:'car',id:body.id};}}
+      if(grabKind==='car'){const hit=raycaster.intersectObjects(api.getCarMeshes(),false)[0];if(hit){body=api.getCar(api.getCarId(hit));held={kind:'car',id:body.id};}}
       else if(grabKind==='person'){const hit=raycaster.intersectObjects(api.getPeople().targets,false)[0];if(hit){body=api.getPeople().pick(hit);if(body?.child){api.toast('Children stay with their families. Choose an adult to grab.');return;}if(body)held={kind:'person',id:body.id};}}
       else {for(const hit of raycaster.intersectObject(api.getWorld(),true)){body=api.getScenery().pickProp(hit);if(body){held={kind:'prop',id:body.id};break;}}}
       if(!body){api.toast(grabKind==='car'?'Click a car to pick it up':grabKind==='person'?'Zoom in and click an adult townsperson':'Click a building, tree, rock, or landmark');return;}
       const base=held.kind==='person'&&!body.airborne?api.getTerrain().heightAt(body.x,body.z):body.y;
       heldHeight=base+(held.kind==='prop'?3.5:1.8);dragPlane.constant=-heldHeight;const liftedPoint=pointAt(e);heldOffset={x:body.x-(liftedPoint?.x??body.x),z:body.z-(liftedPoint?.z??body.z)};
-      if(held.kind==='car'){body.held=true;body.airborne=true;body.y=heldHeight;body.vx=body.vy=body.vz=0;api.selectCar(held.id);}
+      if(held.kind==='car'){body.held=true;body.airborne=true;body.y=heldHeight;body.vx=body.vy=body.vz=0;if(held.id<10)api.selectCar(held.id);}
       else if(held.kind==='person')api.getPeople().lift(held.id,heldHeight);
       else api.getScenery().liftProp(held.id,heldHeight);
       heldHistory=[{x:body.x,z:body.z,t:performance.now()}];canvas.style.cursor='grabbing';api.reactPeople(body.x,body.z,9,'grab');
@@ -66,14 +66,14 @@ export function setupDevTools(api) {
   },true);
   canvas.addEventListener('pointermove',e=>{if(!active||!dragging)return;e.preventDefault();e.stopImmediatePropagation();const p=pointAt(e);if(!p)return;if(held!==null){
     const body=heldBody();if(!body)return;const x=clamp(p.x+heldOffset.x,-100,100),z=clamp(p.z+heldOffset.z,-80,80);
-    if(held.kind==='car'){api.getSim().teleportCar(held.id,x,z,body.heading);body.held=true;body.airborne=true;body.y=heldHeight;}
+    if(held.kind==='car'){api.teleportCar(held.id,x,z,body.heading);body.held=true;body.airborne=true;body.y=heldHeight;}
     else if(held.kind==='person')api.getPeople().move(held.id,x,z,heldHeight);else api.getScenery().moveProp(held.id,x,z,heldHeight);
     heldHistory.push({x,z,t:performance.now()});heldHistory=heldHistory.filter(v=>v.t>performance.now()-200);api.reactPeople(x,z,7,'grab');
   }else if(['raise','lower','repair'].includes(tool)&&performance.now()-lastBrush>70){applyTool(p);lastBrush=performance.now();}},true);
   function release(e,toss=true){
     if(!active&&held===null)return;e?.stopImmediatePropagation?.();dragging=false;
     if(held!==null){const body=heldBody(),velocity=toss?throwVelocity(heldHistory,performance.now()):{x:0,z:0,y:0};
-      if(body){if(held.kind==='car'){body.held=false;body.airborne=true;api.getSim().applyImpulse(held.id,{x:velocity.x*body.mass,z:velocity.z*body.mass,y:velocity.y*body.mass});}else if(held.kind==='person')api.getPeople().release(held.id,velocity);else api.getScenery().releaseProp(held.id,velocity);
+      if(body){if(held.kind==='car'){body.held=false;body.airborne=true;api.applyImpulse(held.id,{x:velocity.x*body.mass,z:velocity.z*body.mass,y:velocity.y*body.mass});}else if(held.kind==='person')api.getPeople().release(held.id,velocity);else api.getScenery().releaseProp(held.id,velocity);
       api.reactPeople(body.x,body.z,11,'grab');const name=held.kind==='car'?body.name:held.kind==='person'?'Townsperson':body.kind==='building'?'Building':body.kind;api.toast(Math.hypot(velocity.x,velocity.z)>1?`${name} takes flight!`:`${name} dropped`);}
       held=null;heldHistory=[];canvas.style.cursor=tool==='throw'?'grab':'';
     }

@@ -103,7 +103,7 @@ function disposeFixture(group) {
 
 for (const [theme, config] of Object.entries(TRACKS)) {
   const circuit = circuitFor(config), group = new THREE.Group();
-  const scenery = buildScenery({ group, theme:config.setting||theme, river:!!config.river, samples: circuit.samples, seed:config.seed||17 });
+  const scenery = buildScenery({ group, theme:config.setting||theme, river:!!config.river, samples: circuit.samples, seed:config.seed||17,city:config.city });
   const pristine = snapshotGeometry(group);
   let time = 0;
   const tick = (frames, dt = 1 / 60) => {
@@ -123,7 +123,7 @@ for (const [theme, config] of Object.entries(TRACKS)) {
   assert.ok(scenery.colliders.filter(collider => collider.kind === 'tree').length >= 30, `${theme}: physics includes the forest`);
   assert.ok(scenery.colliders.filter(collider => collider.kind === 'building').length >= 5, `${theme}: physics includes the village`);
   assert.equal(new Set(scenery.colliders.map(collider => collider.id)).size, scenery.colliders.length, `${theme}: collider IDs are unique`);
-  assert.ok(scenery.colliders.every(collider => collider.mass >= 50 && collider.mass <= 2000 && collider.radius > 0), `${theme}: collider mass and footprint are physical`);
+  assert.ok(scenery.colliders.every(collider => collider.mass >= 50 && collider.mass <= (config.city ? 4000 : 2000) && collider.radius > 0), `${theme}: collider mass and footprint are physical`);
   assert.ok(!scenery.colliders.some(collider => collider.kind === 'hill'), `${theme}: smooth hills are terrain, not giant circle barriers`);
 
   const tree = scenery.colliders.filter(collider => collider.kind === 'tree').sort((a, b) => b.mass - a.mass)[0];

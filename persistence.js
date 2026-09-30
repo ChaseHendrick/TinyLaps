@@ -2,12 +2,12 @@ export const SAVE_KEY = 'tiny-laps-save-v1';
 const finite = value => Number.isFinite(value) && Math.abs(value) < 1e9;
 const fixedCarFields = new Set(['id', 'name', 'color', 'profile', 'personality', 'mass', 'inertia', 'held']);
 
-export function captureRace({ sim, terrain, scenery, barriers, people, view }) {
+export function captureRace({ sim, terrain, scenery, barriers, people, traffic, water, view }) {
   return {
     version: 1, savedAt: Date.now(), view,
     elapsed: sim.elapsed, physics: { ...sim.physics }, aggression: sim.aggression,
     cars: sim.cars.map(car => Object.fromEntries(Object.entries(car).filter(([key]) => !fixedCarFields.has(key)))),
-    terrain: terrain.exportState(), scenery: scenery.exportState(), people: people?.exportState(),
+    terrain: terrain.exportState(), scenery: scenery.exportState(), people: people?.exportState(), traffic:traffic?.exportState(), water:water?.exportState(),
     barriers: barriers.map(barrier => barrier.health),
   };
 }
@@ -21,7 +21,7 @@ export function readRace(storage, themes) {
   return save;
 }
 
-export function restoreRace(save, { sim, terrain, scenery, barriers, people }) {
+export function restoreRace(save, { sim, terrain, scenery, barriers, people, traffic, water }) {
   if (!save || save.cars.length !== sim.cars.length) return false;
   for (const car of save.cars) {
     if (!car || typeof car !== 'object' || !['x', 'y', 'z', 'progress', 'distance', 'heading', 'laps'].every(key => finite(car[key])) || !car.damage || !Object.values(car.damage).every(value => finite(value) && value >= 0 && value <= 1)) return false;
@@ -29,6 +29,8 @@ export function restoreRace(save, { sim, terrain, scenery, barriers, people }) {
   if (!terrain.restoreState(save.terrain)) return false;
   scenery.restoreState(save.scenery);
   if (save.people) people?.restoreState(save.people);
+  if (save.traffic) traffic?.restoreState(save.traffic);
+  if (save.water) water?.restoreState(save.water);
   barriers.forEach((barrier, index) => { const health = save.barriers?.[index]; if (finite(health)) barrier.health = Math.max(0, Math.min(1, health)); });
   sim.configurePhysics(save.physics);
   sim.setAggression(save.aggression);

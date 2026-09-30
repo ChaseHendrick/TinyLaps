@@ -26,8 +26,8 @@ const bad=structuredClone(held);bad.people[0].node=.5;restored.restoreState(bad)
 for(const [key,cfg] of Object.entries(TRACKS)){
   const group=new THREE.Group(),curve=new THREE.CatmullRomCurve3(cfg.points.map(p=>new THREE.Vector3(...p)),true,'centripetal');
   const samples=Array.from({length:300},(_,i)=>{const p=curve.getPointAt(i/300);return{x:p.x,z:p.z};});
-  const scenery=buildScenery({group,samples,theme:cfg.setting||key,river:!!cfg.river,seed:cfg.seed||17});
-  const people=createPedestrians({group,scenery,terrain:{heightAt:()=>0},seed:cfg.seed||17});assert.equal(people.stats.population,36,`${key}: populated town`);
+  const scenery=buildScenery({group,samples,theme:cfg.setting||key,river:!!cfg.river,seed:cfg.seed||17,city:cfg.city});
+  const people=createPedestrians({group,scenery,terrain:{heightAt:()=>0},seed:cfg.seed||17,city:cfg.city});assert.equal(people.stats.population,cfg.city?108:36,`${key}: populated town`);
   for(let i=0;i<120;i++)people.update(1/60,[]);assert(people.crowd.people.every(p=>scenery.isWalkable(p.x,p.z)),`${key}: walkers avoid buildings and roads`);
   group.traverse(m=>{if(m.isInstancedMesh){for(const n of m.instanceMatrix.array)assert(Number.isFinite(n),`${key}: finite bodies`);}});
   if(key==='harbor'){
@@ -47,4 +47,4 @@ for(const [key,cfg] of Object.entries(TRACKS)){
   }
   const geometries=new Set(),materials=new Set();group.traverse(m=>{if(m.isInstancedMesh)m.dispose();if(m.geometry)geometries.add(m.geometry);for(const mat of Array.isArray(m.material)?m.material:m.material?[m.material]:[])materials.add(mat);});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());
 }
-console.log('World interaction checks passed: all 15 populated circuits, family routines, fleeing, adult drop/throw/recovery, child reactions, finite articulated bodies, building drops/collisions/destruction, and saved positions.');
+console.log('World interaction checks passed: all 18 populated worlds, family routines, fleeing, adult drop/throw/recovery, child reactions, finite articulated bodies, building drops/collisions/destruction, and saved positions.');
