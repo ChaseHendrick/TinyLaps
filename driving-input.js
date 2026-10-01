@@ -22,7 +22,7 @@ export function setupDrivingInput({getSim,isPaused,isBlocked,onBlur}){
   }
   function keydown(event){
     if(getSim()?.playerCarId==null||isBlocked()||!bindings[event.code]||event.altKey||event.ctrlKey||event.metaKey
-      ||event.target.closest('button,input,select,textarea,[contenteditable=true]'))return false;
+      ||event.target.closest?.('input,select,textarea,[contenteditable=true]'))return false;
     event.preventDefault();event.stopImmediatePropagation();
     if(available()&&(!event.repeat||keys.has(event.code))){keys.add(event.code);update();}
     return true;
@@ -39,10 +39,12 @@ export function setupDrivingInput({getSim,isPaused,isBlocked,onBlur}){
     button.addEventListener('blur',()=>{if(buttonKeys.delete(button))update();});
     button.addEventListener('contextmenu',event=>event.preventDefault());
   }
+  // Mouse and keyboard players steer with keys; the touch pedals appear once a touch is seen.
+  addEventListener('pointerdown',event=>{if(event.pointerType==='touch')document.body.classList.add('touch-input');},{capture:true,passive:true});
   addEventListener('pointerup',event=>{if(pointers.delete(event.pointerId))update();});
   addEventListener('pointercancel',event=>{if(pointers.delete(event.pointerId))update();});
   addEventListener('blur',()=>{clear();onBlur();});
-  document.addEventListener('focusin',event=>{if(event.target.closest('button,input,select,textarea,[contenteditable=true]')&&!event.target.closest('[data-drive]'))clear();});
+  document.addEventListener('focusin',event=>{if(event.target.closest?.('input,select,textarea,[contenteditable=true]'))clear();});
   document.addEventListener('visibilitychange',()=>{if(document.hidden){clear();onBlur();}});
   return {clear,keydown};
 }
