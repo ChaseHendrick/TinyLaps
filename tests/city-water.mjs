@@ -83,5 +83,36 @@ for(const [key,cfg] of Object.entries(TRACKS).filter(([,c])=>c.city)){
   assert(!car.turning&&!traffic.locks.has(car.b),'fast crossing racer has junction priority');
   assert(traffic.length(car)-car.travel>=traffic.turnRadius+1.3-.01,'local car waits before the crosswalk');
 }
+// A racer that has already passed and is driving away does not make traffic stop at the curb.
+{
+  const plan=createCityPlan(TRACKS.foundry.city),traffic=new CityTraffic({plan,count:1}),car=traffic.cars[0];
+  car.travel=3;traffic.position(car);for(let i=0;i<40;i++)traffic.update(.05);
+  const s=Math.sin(car.heading),c=Math.cos(car.heading),racer={id:0,x:car.x+s*6,z:car.z+c*6,y:car.y,heading:car.heading,vx:s*12,vz:c*12,mass:690,speed:12,damage:{total:0,front:0}};
+  let minimumSpeed=Infinity,maximumLane=0;
+  for(let i=0;i<30;i++){racer.x+=racer.vx*.05;racer.z+=racer.vz*.05;traffic.update(.05,[racer]);minimumSpeed=Math.min(minimumSpeed,car.speed);maximumLane=Math.max(maximumLane,car.lane);}
+  assert(minimumSpeed>1.5&&maximumLane<traffic.lane+.01,'a receding racer needs no yield');
+}
+// Two thrown local cars land almost on top of each other. Both must finish recovering and drive apart.
+{
+  const plan=createCityPlan(TRACKS.foundry.city),traffic=new CityTraffic({plan,count:2}),[first,second]=traffic.cars;
+  const a=plan.nodes[first.a],b=plan.nodes[first.b],length=traffic.length(first),dx=(b.x-a.x)/length,dz=(b.z-a.z)/length,heading=Math.atan2(dx,dz);
+  const at=(travel,lateral)=>({x:a.x+dx*travel+dz*lateral,z:a.z+dz*travel-dx*lateral,heading,y:.5,vx:0,vy:0,vz:0,speed:0,airborne:true});
+  Object.assign(first,at(8,.5));Object.assign(second,at(9,1.45));
+  let settled=-1;for(let i=0;i<20*60;i++){traffic.update(.05);if(settled<0&&!first.recovering&&!second.recovering&&!first.airborne&&!second.airborne)settled=i*.05;}
+  assert(settled>=0&&settled<10,'cars that land together finish recovering within seconds');
+  assert(first.visits>0&&second.visits>0&&penetration(first,second)<1e-8,'both cars drive on without overlapping');
+}
+// Repeated shockwaves throw groups of cars into each other. No car may stay recovering or stuck at a junction.
+for(const cfg of Object.values(TRACKS).filter(c=>c.city)){
+  const plan=createCityPlan(cfg.city),traffic=new CityTraffic({plan,count:cfg.city.traffic,seed:cfg.seed??17}),recovering=new Map();let longestRecovery=0;
+  for(let tick=0;tick<20*240;tick++){
+    if(tick>=400&&tick<2400&&tick%300===100){const v=traffic.cars[(tick/100*7)%traffic.cars.length],x=v.x+.8,z=v.z,r=13.2;for(const c of traffic.cars){const dx=c.x-x,dz=c.z-z,d=Math.hypot(dx,dz);if(d>r)continue;const force=c.mass*1.1*13*(1-d/r),inv=1/Math.max(d,.1);traffic.impulse(c.id,{x:dx*inv*force,z:dz*inv*force,y:force*.3});}}
+    traffic.update(.05);
+    for(const c of traffic.cars){assert([c.x,c.y,c.z,c.heading].every(Number.isFinite));const time=c.recovering?(recovering.get(c.id)||0)+.05:0;recovering.set(c.id,time);longestRecovery=Math.max(longestRecovery,time);}
+  }
+  assert(longestRecovery<20,`${cfg.name}: thrown cars always finish recovering (${longestRecovery.toFixed(1)} s)`);
+  assert(traffic.cars.every(c=>c.wait<60),`${cfg.name}: shockwaves cannot leave a permanent junction deadlock`);
+  for(let i=0;i<traffic.cars.length;i++)for(let j=i+1;j<traffic.cars.length;j++)assert(penetration(traffic.cars[i],traffic.cars[j])<1e-8,`${cfg.name}: settled traffic bodies are separated again`);
+}
 const lake=new ChannelFlow({count:60,length:40,closed:true,bedAt:s=>-.7+.25*Math.cos(s*10)}),initial=lake.volume;for(let i=0;i<400;i++)lake.update(.05);assert(Math.abs(lake.volume-initial)<1e-8);assert(lake.q.every(q=>Math.abs(q)<1e-8),'lake at rest stays at rest');let dam=0;const river=new ChannelFlow({bedAt:s=>-1-.8*s+(s>.48&&s<.54?dam:0)});for(let i=0;i<600;i++)river.update(.05);assert(river.q.some(q=>q>.1));const before=river.sample(.43).surface;dam=2;for(let i=0;i<600;i++)river.update(.05);assert(river.sample(.43).surface>before+.05,'raised bed backs water upstream');assert(river.h.every(h=>Number.isFinite(h)&&h>=0));const save=river.exportState(),clock=river.clock;river.update(0);assert.deepEqual(river.exportState(),save);const copy=new ChannelFlow();assert(copy.restoreState(save));assert.equal(copy.clock,clock);assert(!copy.restoreState({h:[NaN],q:[Infinity]}));
-const wood={y:-3.2,vx:0,vy:0,vz:0},stone={...wood},water={surface:-3,vx:1,vz:.3};floatForce(wood,water,.05,9.81,.2,1);floatForce(stone,water,.05,9.81,.2,.15);assert(wood.vy>stone.vy);assert(wood.vx>0&&wood.vz>0);console.table(reports);console.log('Interior street coverage, continuous turns, separated traffic bodies, racer impact physics, save/throw recovery, water conservation, lake balance, dam response, and buoyancy passed.');
+const wood={y:-3.2,vx:0,vy:0,vz:0},stone={...wood},water={surface:-3,vx:1,vz:.3};floatForce(wood,water,.05,9.81,.2,1);floatForce(stone,water,.05,9.81,.2,.15);assert(wood.vy>stone.vy);assert(wood.vx>0&&wood.vz>0);console.table(reports);console.log('Interior street coverage, continuous turns, separated traffic bodies, racer impact physics, save/throw recovery, receding racers, landing pileups, shockwave recovery, water conservation, lake balance, dam response, and buoyancy passed.');

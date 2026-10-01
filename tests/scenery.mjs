@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { buildScenery } from '../scenery.js';
 import { TRACKS } from '../tracks.js';
 import { RaceSimulation } from '../race.js';
+import { TerrainSystem } from '../terrain.js';
+import { createWater } from '../water.js';
 
 function circuitFor(config) {
   const curve = new THREE.CatmullRomCurve3(config.points.map(point => new THREE.Vector3(...point)), true, 'centripetal');
@@ -215,4 +217,71 @@ for (const [theme, config] of Object.entries(TRACKS)) {
   disposeFixture(group);
 }
 
-console.log('Scenery checks passed: all circuits, directional impacts, collapse, debris gravity/settling/pause/cap, material colors, geometry repair, and vehicle integration.');
+// The game wires scenery to the deformable terrain and the water sampler. These
+// checks use the same wiring: boats stay moored, the shore is a boundary, and
+// resting props follow terrain edits without moving anything at load.
+function wiredWorld(theme, config) {
+  const circuit = circuitFor(config), group = new THREE.Group();
+  const terrain = new TerrainSystem({ group, shape: config.city ? 'tile' : 'island' });
+  const water = createWater({ group, terrain, river: !!config.river });
+  const scenery = buildScenery({ group, theme: config.setting || theme, river: !!config.river, samples: circuit.samples, seed: config.seed || 17, city: config.city, authoredProps: config.props || [] });
+  scenery.setGroundSampler((x, z) => terrain.heightAt(x, z)); scenery.setWaterSampler(water.sample);
+  let time = 0;
+  const tick = (frames, dt = 1 / 30) => { for (let i = 0; i < frames; i++) { time += dt; water.update(dt); scenery.update(time, dt); } };
+  return { group, terrain, water, scenery, tick };
+}
+for (const [theme, config] of Object.entries(TRACKS)) {
+  const world = wiredWorld(theme, config);
+  world.tick(60);
+  for (const collider of world.scenery.colliders.filter(c => c.kind !== 'boat')) {
+    assert.equal(collider.y, 0, `${theme}: ${collider.id} keeps its height when the world loads`);
+  }
+  disposeFixture(world.group);
+}
+{
+  const { group, terrain, scenery, tick } = wiredWorld('harbor', TRACKS.harbor);
+  const boats = scenery.colliders.filter(c => c.kind === 'boat'), origins = boats.map(b => ({ x: b.x, z: b.z }));
+  assert.equal(boats.length, 2);
+  tick(30 * 240);
+  boats.forEach((boat, i) => {
+    assert.ok(Math.hypot(boat.x - origins[i].x, boat.z - origins[i].z) < 4, `${boat.id}: the sea current cannot carry a moored boat away`);
+    assert.ok(!terrain.contains(boat.x, boat.z) && boat.y < -2.5, `${boat.id}: a moored boat stays afloat at sea`);
+  });
+  // A boat flung low at the island stops at the shoreline instead of popping onto land.
+  const west = boats.find(b => b.x < 0);
+  scenery.liftProp(west.id, -2.7); scenery.moveProp(west.id, -67, 0, -2.7); scenery.releaseProp(west.id, { x: 12, y: 0, z: 0 });
+  tick(30 * 40);
+  assert.ok(!terrain.contains(west.x, west.z) && west.y < -2.5, 'The shore is a boundary for a floating hull');
+  // A boat thrown far out to sea moors where it lands rather than drifting forever.
+  scenery.liftProp(west.id, 3); scenery.moveProp(west.id, -95, 6, 3); scenery.releaseProp(west.id, { x: -6, y: 2, z: 0 });
+  tick(30 * 10); const splash = { x: west.x, z: west.z };
+  tick(30 * 120);
+  assert.ok(west.x < -90 && Math.hypot(west.x - splash.x, west.z - splash.z) < 4, 'A thrown boat moors again where it splashes down');
+  const thrown = scenery.exportState();
+  // Saves from before moorings existed could hold a beached or distant boat. Those return home.
+  const legacy = structuredClone(thrown);
+  for (const item of legacy.props.filter(p => p.id.includes('boat'))) delete item.anchor;
+  Object.assign(legacy.props.find(p => p.id === west.id), { x: -62.1, y: 0, z: -.6 });
+  Object.assign(legacy.props.find(p => p.id !== west.id && p.id.includes('boat')), { x: 183.4, y: -3.29, z: 24.5 });
+  scenery.reset(); scenery.restoreState(legacy);
+  boats.forEach((boat, i) => assert.deepEqual([boat.x, boat.y, boat.z], [origins[i].x, -3, origins[i].z], `${boat.id}: an old beached or drifted boat returns to its mooring`));
+  scenery.reset(); scenery.restoreState(thrown); tick(30 * 30);
+  assert.ok(Math.hypot(west.x - splash.x, west.z - splash.z) < 4, 'A saved mooring survives reload');
+
+  // Resting props follow terrain edits, and repairing the ground returns them exactly.
+  scenery.reset(); tick(5);
+  const pristine = snapshotGeometry(group).filter(({ object }) => !object.userData.terrain && object.name !== 'Physical channel water');
+  const tree = scenery.colliders.find(c => c.kind === 'tree'), house = scenery.colliders.find(c => c.kind === 'building');
+  for (let i = 0; i < 3; i++) { terrain.sculpt(tree.x, tree.z, -.45, 5); terrain.sculpt(house.x, house.z, .45, 5); }
+  tick(60);
+  assert.ok(Math.abs(tree.y - terrain.heightAt(tree.x, tree.z)) < 1e-6 && tree.y < -1, 'A tree over a lowered crater drops onto the new floor');
+  assert.ok(Math.abs(house.y - terrain.heightAt(house.x, house.z)) < 1e-6 && house.y > 1, 'A house on raised ground rests on top of it');
+  assert.equal(tree.health, 1, 'Settling onto edited ground is not an impact');
+  terrain.repairAt(tree.x, tree.z, 14); terrain.repairAt(house.x, house.z, 14); tick(60);
+  assert.ok(tree.y === 0 && house.y === 0, 'Repaired ground puts props back at their original height');
+  assert.equal(scenery.exportState().props.filter(p => !p.id.includes('boat')).length, 0, 'Repaired props are no longer recorded as moved');
+  for (const { object, arrays } of pristine) closeArray(object.geometry.attributes.position.array, arrays.position, 'Repaired ground restores prop geometry', 1e-5);
+  disposeFixture(group);
+}
+
+console.log('Scenery checks passed: all circuits, directional impacts, collapse, debris gravity/settling/pause/cap, material colors, geometry repair, vehicle integration, moored boats, shoreline, and props on edited terrain.');

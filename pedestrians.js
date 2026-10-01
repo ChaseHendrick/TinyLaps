@@ -104,7 +104,8 @@ export class TownCrowd {
       const goal=this.nodes[person.goal];if(!goal)continue;
       const dx=goal.x-person.x,dz=goal.z-person.z,distance=Math.hypot(dx,dz);
       const step=Math.min(distance,dt*(person.state==='panic'?2.2:person.speed));
-      if(distance>.001){const nextX=person.x+dx/distance*step,nextZ=person.z+dz/distance*step;if(!this.walkable(nextX,nextZ)){person.node=this.nearestNode(person.x,person.z);person.goal=person.node;continue;}person.x=nextX;person.z=nextZ;person.heading=Math.atan2(dx,dz);person.phase+=step*(person.state==='panic'?7:5);person.moving=true;}
+      // A prop dropped on a walker leaves no walkable step from inside it, so the walker steps out to the nearest path point.
+      if(distance>.001){const nextX=person.x+dx/distance*step,nextZ=person.z+dz/distance*step;if(!this.walkable(nextX,nextZ)){person.node=this.nearestNode(person.x,person.z);person.goal=person.node;if(!this.walkable(person.x,person.z)){const n=this.nodes[person.node];person.x=n.x;person.z=n.z;}continue;}person.x=nextX;person.z=nextZ;person.heading=Math.atan2(dx,dz);person.phase+=step*(person.state==='panic'?7:5);person.moving=true;}
       if(distance<=step+.001){person.previous=person.node;person.node=person.goal;person.goal=person.node;if(person.state!=='panic'&&this.random()<.2)person.wait=.6+this.random()*2.5;}
     }
   }
