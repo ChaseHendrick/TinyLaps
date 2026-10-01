@@ -66,6 +66,9 @@ function trafficContact(a,b){
   }
   return {depth,normal};
 }
+// A throw or a racer shove can leave two bodies touching. Such a touch may only
+// shrink; rejecting every move that still touches would freeze both forever.
+function worsens(after,before,other){const now=trafficContact(after,other);if(!now)return false;const was=trafficContact(before,other);return !was||now.depth>was.depth+1e-6;}
 export class CityTraffic {
   constructor({plan,count=28,seed=17,groundAt=()=>0,obstacles=()=>[],strike=()=>{}}){
     Object.assign(this,{plan,seed:seed>>>0,groundAt,obstacles,strike,clock:0});this.cars=[];this.locks=new Map();
@@ -107,7 +110,10 @@ export class CityTraffic {
   impulse(id,impulse){const c=this.cars.find(c=>c.id===id);if(!c)return false;this.release(c);c.held=false;c.airborne=true;c.vx+=(impulse.x||0)/c.mass;c.vz+=(impulse.z||0)/c.mass;c.vy+=(impulse.y||0)/c.mass;return true;}
   hurt(c,speed){c.health=clamp(c.health-Math.max(0,speed-2)*.025,.15,1);c.damage.total=1-c.health;}
   release(c){if(this.locks.get(c.junction)===c.id)this.locks.delete(c.junction);c.junction=-1;}
-  recover(c){this.release(c);let best=Infinity;for(const e of this.plan.edges)for(const reverse of [false,true]){const a=reverse?e.b:e.a,b=reverse?e.a:e.b,s={...c,a,b,turning:false,travel:0};const aa=this.plan.nodes[a],bb=this.plan.nodes[b],length=e.length;s.travel=clamp(((c.x-aa.x)*(bb.x-aa.x)+(c.z-aa.z)*(bb.z-aa.z))/length,2,length-2);this.position(s);const distance=Math.hypot(s.x-c.x,s.z-c.z);if(distance<best){best=distance;c.a=a;c.b=b;c.travel=s.travel;}}c.next=this.chooseNext(c);c.turning=false;c.turnDistance=0;c.recovering=true;}
+  recover(c){this.release(c);let best=Infinity;for(const e of this.plan.edges)for(const reverse of [false,true]){const a=reverse?e.b:e.a,b=reverse?e.a:e.b,s={...c,a,b,turning:false,travel:0};const aa=this.plan.nodes[a],bb=this.plan.nodes[b],length=e.length;s.travel=clamp(((c.x-aa.x)*(bb.x-aa.x)+(c.z-aa.z)*(bb.z-aa.z))/length,2,length-this.turnRadius-1.3);this.position(s);const distance=Math.hypot(s.x-c.x,s.z-c.z);if(distance<best){best=distance;c.a=a;c.b=b;c.travel=s.travel;}}c.next=this.chooseNext(c);c.turning=false;c.turnDistance=0;c.recovering=true;}
+  /** A recovery blocked for seconds takes the nearest free lane spot, never one touching another body. */
+  settle(c,racers=[]){let best=null,bestDistance=Infinity;c.wait=0;for(const e of this.plan.edges)for(const reverse of [false,true]){const s={...c,a:reverse?e.b:e.a,b:reverse?e.a:e.b,turning:false,lane:this.lane,speed:0};for(let travel=2;travel<=e.length-this.turnRadius-1.3;travel+=.75){s.travel=travel;this.position(s);const distance=Math.hypot(s.x-c.x,s.z-c.z);if(distance>=bestDistance||this.cars.some(o=>o!==c&&!o.held&&!o.airborne&&trafficContact(s,o))||racers.some(r=>!r.airborne&&trafficContact(s,r)))continue;best={a:s.a,b:s.b,travel};bestDistance=distance;}}
+    if(!best)return false;Object.assign(c,best,{turning:false,turnDistance:0,lane:this.lane,speed:0,recovering:false});c.next=this.chooseNext(c);this.position(c);return true;}
   racerContact(c,racer){
     const contact=trafficContact(c,racer);if(!contact)return false;const {normal:n,depth}=contact;
     const closing=(racer.vx-c.vx)*n.x+(racer.vz-c.vz)*n.z,invC=1/c.mass,invR=racer.held?0:1/racer.mass;
@@ -126,11 +132,12 @@ export class CityTraffic {
         const floor=this.groundAt(c.x,c.z)+.18;if(c.y<floor){c.y=floor;this.hurt(c,Math.hypot(c.vx,c.vy,c.vz));c.vx=c.vy=c.vz=0;c.airborne=false;this.recover(c);break;}}
         continue;
       }
-      if(c.recovering){const target={...c};this.position(target);const dx=target.x-c.x,dz=target.z-c.z,d=Math.hypot(dx,dz),step=Math.min(d,dt*1.4),candidate={...c,x:c.x+dx/Math.max(.001,d)*step,z:c.z+dz/Math.max(.001,d)*step,heading:d>.05?Math.atan2(dx,dz):target.heading};if(!this.cars.some(o=>o!==c&&!o.held&&!o.airborne&&trafficContact(candidate,o))){c.x=candidate.x;c.z=candidate.z;c.heading=candidate.heading;c.speed=1.4;c.y=this.groundAt(c.x,c.z)+.18;if(d<.05){c.recovering=false;this.position(c);}}else c.speed=0;continue;}
+      if(c.recovering){const target={...c};this.position(target);const dx=target.x-c.x,dz=target.z-c.z,d=Math.hypot(dx,dz),step=Math.min(d,dt*1.4),candidate={...c,x:c.x+dx/Math.max(.001,d)*step,z:c.z+dz/Math.max(.001,d)*step,heading:d>.05?Math.atan2(dx,dz):target.heading};if(!this.cars.some(o=>o!==c&&!o.held&&!o.airborne&&!o.recovering&&worsens(candidate,c,o))){c.x=candidate.x;c.z=candidate.z;c.heading=candidate.heading;c.speed=1.4;c.wait=0;c.y=this.groundAt(c.x,c.z)+.18;if(d<.05){c.recovering=false;this.position(c);}}else{c.speed=0;c.wait+=dt;if(c.wait>4)this.settle(c,racers);}continue;}
       const a=this.plan.nodes[c.a],b=this.plan.nodes[c.b],length=this.length(c),remaining=length-c.travel;
       if(c.junction===c.a&&!c.turning&&c.travel>this.turnRadius+1.2)this.release(c);
       const before={...c};
-      const approaching=racers.some(r=>{if(r.held||r.airborne||r.speed<2)return false;const dx=r.x-c.x,dz=r.z-c.z,side=Math.abs(dx*Math.cos(c.heading)-dz*Math.sin(c.heading)),alignment=Math.abs(Math.cos(r.heading-c.heading));return Math.hypot(dx,dz)<Math.max(25,r.speed*3)&&side<this.plan.width*.65&&alignment>.65;});
+      // Only a racer closing on the car counts. One already driving away needs no curb.
+      const approaching=racers.some(r=>{if(r.held||r.airborne||r.speed<2)return false;const dx=r.x-c.x,dz=r.z-c.z,side=Math.abs(dx*Math.cos(c.heading)-dz*Math.sin(c.heading)),alignment=Math.abs(Math.cos(r.heading-c.heading)),vx=r.vx??Math.sin(r.heading)*r.speed,vz=r.vz??Math.cos(r.heading)*r.speed;return Math.hypot(dx,dz)<Math.max(25,r.speed*3)&&side<this.plan.width*.65&&alignment>.65&&dx*vx+dz*vz<0;});
       if(approaching)c.yieldUntil=this.clock+2;
       const yielding=this.clock<c.yieldUntil;
       if(!c.turning)c.lane+=clamp((yielding?Math.min(this.plan.width/2-.65,2.85):this.lane)-c.lane,-dt*2.5,dt*2.5);
@@ -138,7 +145,9 @@ export class CityTraffic {
       let target=c.maxSpeed*(.45+c.health*.55);
       if(c.turning)target=Math.min(target,2.1);
       else if(yielding)target=0;
-      for(const other of [...this.cars,...racers]){if(other===c||other.held||other.airborne)continue;const dx=other.x-c.x,dz=other.z-c.z,forward=dx*Math.sin(c.heading)+dz*Math.cos(c.heading),side=Math.abs(dx*Math.cos(c.heading)-dz*Math.sin(c.heading));if(forward>0&&forward<3.1+c.speed*.3&&side<1.0)target=0;}
+      let ahead=false;for(const other of [...this.cars,...racers]){if(other===c||other.held||other.airborne)continue;const dx=other.x-c.x,dz=other.z-c.z,forward=dx*Math.sin(c.heading)+dz*Math.cos(c.heading),side=Math.abs(dx*Math.cos(c.heading)-dz*Math.sin(c.heading));if(forward>0&&forward<3.1+c.speed*.3&&side<1.0){target=0;ahead=true;}}
+      // A car that landed in front of a reservation holder cannot enter until the holder lets go.
+      if(ahead&&!c.turning&&c.junction===c.b)this.release(c);
       if(!c.turning&&remaining<stopDistance+1.5&&this.locks.get(c.b)!==c.id){
         if(!this.exitClear(c,c.next)){const options=b.neighbors.filter(n=>n!==c.a&&this.exitClear(c,n));if(options.length)c.next=options[Math.floor(this.random()*options.length)];}
         const clear=!this.locks.has(c.b)&&this.signal(b,Math.abs(b.z-a.z)>Math.abs(b.x-a.x))&&this.exitClear(c,c.next)&&!this.racerPriority(b,racers)&&Math.abs(c.lane-this.lane)<.05;
@@ -156,7 +165,7 @@ export class CityTraffic {
       }
       if(c.turning&&c.turnDistance>=path.length){c.previous=c.a;c.a=c.b;c.b=c.next;c.travel=path.r+c.turnDistance-path.length;c.turning=false;c.turnDistance=0;c.visits++;c.next=this.chooseNext(c);}
       this.position(c);
-      const blocked=this.cars.some(o=>o!==c&&!o.held&&!o.airborne&&trafficContact(c,o))||racers.some(o=>!o.airborne&&trafficContact(c,o));
+      const blocked=this.cars.some(o=>o!==c&&!o.held&&!o.airborne&&worsens(c,before,o))||racers.some(o=>!o.airborne&&trafficContact(c,o));
       if(blocked){
         // A movement rollback must also undo a reservation acquired during
         // that move. Otherwise the car forgets which junction it owns and

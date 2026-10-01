@@ -44,7 +44,15 @@ for(const [key,cfg] of Object.entries(TRACKS)){
     for(let i=0;i<45;i++)scenery.update(6+i/60,1/60);
     assert(house.health<1&&other.health<1,'Thrown building damages both structures');assert(scenery.debrisCount>0);
     group.traverse(m=>{if(m.isMesh&&m.geometry.attributes.position)for(const n of m.geometry.attributes.position.array)assert(Number.isFinite(n));});
+    // A building dropped on walking residents must not trap them inside its footprint.
+    scenery.reset();people.reset();for(let i=0;i<60;i++)people.update(1/60,[]);
+    const walker=people.crowd.people.find(p=>!p.child&&p.moving&&Math.hypot(p.x-house.x,p.z-house.z)>house.radius+4);
+    scenery.liftProp(house.id,.4);scenery.moveProp(house.id,walker.x+.3,walker.z,.4);scenery.releaseProp(house.id,{x:0,z:0,y:0});
+    for(let i=0;i<30;i++)scenery.update(9+i/60,1/60);
+    assert(house.solid&&!house.held&&people.crowd.people.some(p=>Math.hypot(p.x-house.x,p.z-house.z)<house.radius),'The dropped building lands on a resident');
+    for(let i=0;i<120;i++)people.update(1/60,[]);
+    assert(people.crowd.people.every(p=>p.airborne||scenery.isWalkable(p.x,p.z)),'Residents under a dropped building step out to a walkable path');
   }
   const geometries=new Set(),materials=new Set();group.traverse(m=>{if(m.isInstancedMesh)m.dispose();if(m.geometry)geometries.add(m.geometry);for(const mat of Array.isArray(m.material)?m.material:m.material?[m.material]:[])materials.add(mat);});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());
 }
-console.log('World interaction checks passed: all 18 populated worlds, family routines, fleeing, adult drop/throw/recovery, child reactions, finite articulated bodies, building drops/collisions/destruction, and saved positions.');
+console.log('World interaction checks passed: all 18 populated worlds, family routines, fleeing, adult drop/throw/recovery, child reactions, finite articulated bodies, building drops/collisions/destruction, residents freed from dropped buildings, and saved positions.');
