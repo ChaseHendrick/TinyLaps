@@ -15,12 +15,12 @@ Open `index.html` directly in a modern browser. It is a portable offline build w
 - **Pebble Bay, Clover Hills and Sundown Valley** retain the original coastal, hill and evening worlds.
 - **Meadow Oval, Orchard Square, Crescent Cove, Fern Switchbacks, Lantern Point, Lucky Clover, Seabreeze Sprint, Highland Ribbon, Lagoon Keyhole, Amber Chicane, Summit Loop and Dusk Run** add twelve different centerlines, including long straights, linked bends, narrow loops and elevated sections.
 - Drag to orbit, scroll or pinch to zoom, and use the zoom buttons for close views.
-- Select a car in the world or standings. **Follow** trails it, **Ride** faces along its actual heading, and **Tour** slowly circles the island.
-- Choose **Drive this car** to control the selected racer. **WASD or arrows** accelerate, steer, and brake into reverse; **Shift** brakes. Touch controls support steering and a pedal together. The other nine racers keep competing. Switching racers transfers control with neutral inputs; **Let AI drive** or **Stop driving** hands it back.
+- Select a car in the world or standings. **Follow** trails it and moves in front of any building that would block the view, **Ride** faces along its actual heading, and **Tour** slowly circles the island.
+- Choose **Drive this car** to control the selected racer. **WASD or arrows** accelerate, steer, and brake into reverse; **Shift** brakes. On touch screens, on-screen pedals support steering and a pedal together; with a mouse and keyboard they stay out of the road until you touch the screen. The driving panel shows the current lap time with your last and best laps, and each completed lap is announced. The other nine racers keep competing. Switching racers transfers control with neutral inputs; **Let AI drive** or **Stop driving** hands it back.
 - **Return to road** places a stranded player car in a clear spot on the course without repairing its damage. Leaving the window pauses manual driving. Opening worlds, pausing, or switching cars clears held inputs. Changing worlds or restarting returns all cars to AI.
 - Racers keep competing. Each has a distinct autonomous driving policy: attackers, late brakers, defenders, opportunists and hotheads. The temperament selector changes their appetite for risk.
 - The condition meter, contact count and driving intent show what is happening. Impacts visibly crumple panels, mark paint, bend glass and alter wheel alignment. Heavy front damage produces engine smoke.
-- Restart restores cars, terrain, scenery, barriers and tire marks while preserving your camera, speed and pause state. On phones, standings and driver details start compact and can be expanded.
+- Restart restores cars, terrain, scenery, barriers and tire marks while preserving your camera, speed and pause state. On phones and shorter windows, driver details start compact and can be expanded; on phones in portrait, opening the standings or the details closes the other so neither covers the race.
 
 ## God powers and developer tools
 
@@ -58,6 +58,8 @@ The villages have 36 residents, including families. Adults and children walk aro
 | `D` | Developer tools and god powers while watching; steer right while driving |
 | `Alt` + `M` | Open the circuit chooser |
 | `Escape` | Stop manual driving, close god tools, and return to exploration |
+
+Shortcuts keep working after you click a button. Space and Enter activate a focused button, and combinations with Ctrl, Cmd, or Alt (other than `Alt` + `M`) are left to the browser.
 
 Your current circuit and race save automatically in this browser every 2.5 seconds and when you leave. Saves retain lap progress, car damage, sculpted terrain, scenery damage and moved buildings, residents and their recovery, barriers, city traffic, water flow, camera, and control settings. Reopening restores that race without advancing it while the page was closed. Manual driving also resumes for the selected racer, with neutral pedals and steering inputs. An older city save keeps its world changes and car damage when a route revision moves racers onto the new streets; lap timing restarts for the revised course. Restart deliberately clears race and world damage. If browser storage is unavailable, the game reports that the race is limited to the current session.
 

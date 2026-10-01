@@ -84,7 +84,8 @@ body.driving-mode .hint{visibility:hidden}
  body.driving-mode .brand{top:12px;left:12px}
  body.driving-mode .race-mood{display:none}
  body.driving-mode .worlds{left:auto;right:12px;top:12px;width:190px}
- body.driving-mode .tools{top:82px;right:12px}
+ body.driving-mode .tools{top:16px;right:210px}
+ body.driving-mode .camera-bar{left:12px;bottom:12px;transform:none}
  body.driving-mode .standings{display:none}
  body.driving-mode #selected{left:12px;right:auto;top:78px;bottom:auto;width:152px;max-height:calc(100dvh - 178px);padding:10px;overflow:auto}
  body.driving-mode #selected .selected-name{padding:0}
@@ -92,7 +93,7 @@ body.driving-mode .hint{visibility:hidden}
  body.driving-mode #selected .telemetry{position:static;width:auto;gap:8px;margin:7px 0}
  body.driving-mode #selected .selected-foot span{display:none}
  body.driving-mode #selected .selected-heading .eyebrow{font-size:6px;letter-spacing:.5px}
- .driving-controls{left:176px;right:12px;bottom:111px;width:auto;transform:none;padding:10px}
+ .driving-controls{left:176px;right:12px;bottom:76px;width:auto;transform:none;padding:10px}
  .driving-title b{font-size:16px}
  .driving-actions button{width:60px;font-size:9px}
  #driving-help{font-size:8px}
@@ -100,3 +101,81 @@ body.driving-mode .hint{visibility:hidden}
  .driving-pad button{min-height:48px}
  .driving-pad button small{font-size:8px}
 }
+
+/* Panel fit. The right column stacks the world picker, minimap, zoom tools and spotlight, which is
+   taller than most laptop windows. The zoom tools join the top row beside the world picker and the
+   spotlight scrolls above the minimap instead of covering it; app.js collapses driver details by
+   default below 740px of height, where they cannot fit. */
+@media(min-width:701px){
+ .tools{top:34px;right:258px}
+ #selected{max-height:calc(100dvh - 375px);overflow:auto}
+}
+@media(min-width:701px) and (max-width:1000px){
+ .tools{right:248px}
+}
+@media(min-width:701px) and (max-height:650px){
+ #selected{max-height:calc(100dvh - 362px)}
+}
+/* Between tablet and wide desktop the centered camera bar meets the footer buttons. */
+@media(min-width:701px) and (max-width:1100px){
+ .camera-bar{left:30px;bottom:48px;transform:none}
+ .standings #leaderboard{max-height:max(0px,calc(100dvh - 384px))}
+}
+@media(min-width:701px) and (max-width:1000px){
+ .camera-bar{left:20px}
+}
+@media(min-width:701px) and (max-width:1100px) and (max-height:650px){
+ .standings #leaderboard{max-height:max(0px,calc(100dvh - 358px))}
+}
+/* Short landscape while watching mirrors the driving layout: identity and standings on the left,
+   world, zoom and spotlight on the right, camera modes and actions sharing the bottom edge. */
+@media(min-width:701px) and (max-height:560px){
+ body:not(.driving-mode) .brand{top:14px}
+ body:not(.driving-mode) .race-mood{left:20px;right:auto;top:68px}
+ body:not(.driving-mode) .standings{top:108px}
+ body:not(.driving-mode) .standings #leaderboard{max-height:max(0px,calc(100dvh - 330px))}
+ body:not(.driving-mode) .worlds{top:12px}
+ body:not(.driving-mode) .tools{top:21px;right:248px}
+ body:not(.driving-mode) #selected{top:84px;bottom:auto;max-height:calc(100dvh - 147px);padding:10px 13px 0}
+ body:not(.driving-mode) #selected .telemetry{margin:8px 0}
+ body:not(.driving-mode) #drive-racer{margin-bottom:7px}
+ body:not(.driving-mode) .camera-bar{left:20px;bottom:15px;transform:none}
+ body:not(.driving-mode) footer{justify-content:flex-end}
+ body:not(.driving-mode) footer .hint{display:none}
+ body:not(.driving-mode) .footer-actions{gap:2px;flex-wrap:nowrap}
+ body:not(.driving-mode) .footer-actions button{width:32px;height:38px;padding:7px}
+ body:not(.driving-mode) .footer-actions #grab-cars{width:42px;min-height:38px;padding:9px}
+ body:not(.driving-mode) .footer-actions #grab-cars span{display:none}
+}
+@media(min-width:701px) and (max-width:830px) and (max-height:560px){
+ body.driving-mode .race-mood{display:none}
+}
+@media(max-width:700px) and (max-height:560px){
+ body:not(.driving-mode) .brand{top:12px;left:12px}
+ body:not(.driving-mode) .race-mood{left:12px;right:auto;top:56px}
+ body:not(.driving-mode) .standings{top:108px;left:12px}
+ body:not(.driving-mode) .standings #leaderboard{max-height:max(0px,calc(100dvh - 306px))}
+ body:not(.driving-mode) .worlds{left:auto;right:12px;top:12px;width:190px}
+ body:not(.driving-mode) .tools{top:16px;right:210px}
+ body:not(.driving-mode) #selected{left:auto;right:12px;top:78px;bottom:auto;width:190px;max-height:calc(100dvh - 148px);padding:10px}
+ body:not(.driving-mode) #selected .selected-name{padding:0}
+ body:not(.driving-mode) #selected .selected-name b{font-size:18px}
+ body:not(.driving-mode) #selected .telemetry{position:static;width:auto;gap:8px;margin:7px 0}
+ body:not(.driving-mode) #selected .selected-foot span{display:none}
+ body:not(.driving-mode) #selected .selected-heading .eyebrow{font-size:6px;letter-spacing:.5px}
+ body:not(.driving-mode) .camera-bar{left:12px;bottom:12px;transform:none}
+}
+/* Stacked phone panels: app.js keeps only one of standings and details open at a time. */
+@media(max-width:700px) and (min-height:561px){
+ .standings #leaderboard{max-height:max(0px,calc(100dvh - 580px))}
+ #selected{max-height:calc(100dvh - 397px);overflow:auto}
+}
+/* Mouse and keyboard players drive with keys, so the touch pedals stay out of the road until a touch
+   is seen (driving-input.js adds .touch-input). Touch-first devices always show them. */
+@media(hover:hover) and (pointer:fine){
+ body:not(.touch-input) .driving-pad{display:none}
+ body:not(.touch-input) #driving-help{margin-bottom:0}
+}
+/* Lap clock for the driven car, beneath its name. */
+.driving-title{gap:3px}
+.driving-lap{font-size:10px;line-height:1.3;color:#5d735f;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
