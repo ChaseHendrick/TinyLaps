@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import * as THREE from 'three';
 import { RaceSimulation, PHYSICS_STEP } from '../race.js';
+import { TRACKS } from '../tracks.js';
+import { buildTrack } from '../track.js';
+import { buildScenery } from '../scenery.js';
 
 const mod = (value,length) => ((value%length)+length)%length;
 const directionSpeed = car => car.vx*Math.sin(car.heading)+car.vz*Math.cos(car.heading);
@@ -160,4 +164,16 @@ for (const steer of [-1,1]) {
   assert.ok(car.speed>1&&Math.hypot(car.x-position.x,car.z-position.z)>2,'autonomous recovery resumes after handback');
 }
 
-console.log('Player driving checks passed: bounded transient input, left/right physical steering, speed-sensitive wheel angles, acceleration/coasting, brake-to-reverse and brake-to-forward, independent brake priority, handback/reset, engine and impact damage, held/airborne bodies, and nine continuing autonomous racers.');
+// A player stopped on the racing line, in a city street or on a circuit, is
+// overtaken. No racer waits behind it for good.
+for (const [key,fraction] of [['foundry',.35],['oldquarter',.15],['sprint',.55]]) {
+  const config=TRACKS[key],track=buildTrack(config);
+  const environment=config.city?{colliders:buildScenery({group:new THREE.Group(),theme:config.setting,city:config.city,seed:config.seed,
+    samples:track.samples.filter((_,i)=>i%6===0)}).colliders,barrierAt:()=>({solid:false}),speedLimit:12,cornerSafety:.82}:{};
+  const sim=new RaceSimulation(track.length,track.sampleAtDistance,environment),p=track.sampleAtDistance(track.length*fraction);
+  sim.teleportCar(0,p.x,p.z,Math.atan2(p.tx,p.tz));sim.setPlayerCar(0);
+  sim.update(90);const before=sim.cars.map(car=>car.progress);sim.update(60);
+  for (const car of sim.cars.slice(1)) assert.ok(car.progress-before[car.id]>100,`${key}: ${car.name} keeps racing past the parked player`);
+}
+
+console.log('Player driving checks passed: bounded transient input, left/right physical steering, speed-sensitive wheel angles, acceleration/coasting, brake-to-reverse and brake-to-forward, independent brake priority, handback/reset, engine and impact damage, held/airborne bodies, nine continuing autonomous racers, and racers passing a player parked on the racing line.');

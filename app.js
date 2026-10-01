@@ -135,12 +135,14 @@ function recoverDriver(){
 }
 function formatTime(s){return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`}
 const lapClock=(t,digits=1)=>t<60?t.toFixed(digits)+'s':`${Math.floor(t/60)}:${(t%60).toFixed(digits).padStart(digits+3,'0')}`;
-// The driven car's lap clock updates every frame, and each completed lap is announced once.
+// The driven car's lap clock updates every frame. Completed laps, shortcuts (rejoining the route ahead
+// of where the car left it), and returning to undo a shortcut are each announced once.
 function updateDrivingLap(){const car=sim.playerCarId===null?null:sim.cars[sim.playerCarId];if(!car){lapLog=null;return}
- const text=car.lapStartedAt===null?'Lap timing starts at the line':`Lap ${car.laps+1} · ${lapClock(car.currentLapTime)}${car.lastLap?` · last ${lapClock(car.lastLap,2)}`:''}${car.bestLap?` · best ${lapClock(car.bestLap,2)}`:''}`;if($('driving-lap').textContent!==text)$('driving-lap').textContent=text;
- if(lapLog?.id===car.id&&car.lapCuts>lapLog.lapCuts)toast('You rejoined the route ahead, so this lap will not count. Complete a full lap from the line.');
- else if(lapLog?.id===car.id&&car.laps>lapLog.laps)toast(car.lastLap!==lapLog.lastLap?`Lap ${car.laps} in ${lapClock(car.lastLap,2)}${car.bestLap===car.lastLap&&lapLog.bestLap!==null?'. New best!':''}`:`Lap ${car.laps} counts, untimed after a reset`);
- lapLog={id:car.id,laps:car.laps,lastLap:car.lastLap,bestLap:car.bestLap,lapCuts:car.lapCuts}}
+ const best=car.bestLap?` · best ${lapClock(car.bestLap,2)}`:'',text=car.lapStartedAt===null?'Lap timing starts at the line':car.lapCut?`Lap ${car.laps+1} · untimed after a shortcut${best}`:`Lap ${car.laps+1} · ${lapClock(car.currentLapTime)}${car.lastLap?` · last ${lapClock(car.lastLap,2)}`:''}${best}`;if($('driving-lap').textContent!==text)$('driving-lap').textContent=text;
+ if(lapLog?.id===car.id){if(car.laps>lapLog.laps)toast(car.lastLap!==lapLog.lastLap?`Lap ${car.laps} in ${lapClock(car.lastLap,2)}${car.bestLap===car.lastLap&&lapLog.bestLap!==null?'. New best!':''}`:`Lap ${car.laps} complete, untimed`);
+  else if(car.lapCut&&!lapLog.lapCut)toast('Shortcut taken. Return to where you left the route, or this lap needs an extra circuit.');
+  else if(!car.lapCut&&lapLog.lapCut)toast('Back where you left the route. This lap counts again.')}
+ lapLog={id:car.id,laps:car.laps,lastLap:car.lastLap,bestLap:car.bestLap,lapCut:car.lapCut}}
 function updateUI(){
  const order=[...sim.cars].sort((a,b)=>b.progress-a.progress),leader=order[0],car=sim.cars[selected];
  order.forEach((c,i)=>{const b=$('leaderboard').querySelector(`[data-car="${c.id}"]`);b.style.order=i;b.classList.toggle('selected',c.id===selected);b.querySelector('.rank').textContent=String(i+1).padStart(2,'0');b.querySelector('.gap').textContent=i===0?'LEAD':`+${((leader.progress-c.progress)/Math.max(leader.speed,1)).toFixed(1)}`;b.querySelector('.damage-warning').textContent=c.damage.total>.25?'!':'';b.querySelector('.car-dot').classList.toggle('damaged',c.damage.total>.25)});

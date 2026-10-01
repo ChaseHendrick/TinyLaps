@@ -76,6 +76,7 @@ for(const [key,cfg] of Object.entries(TRACKS)) {
     }
   }
   assert.ok(sim.cars.every(c=>c.laps>=3&&c.bestLap>0),'every autonomous driver completes timed laps');
+  assert.ok(sim.cars.every(c=>c.lapCuts===0&&c.lastLap>0&&c.laps===Math.floor(c.progress/track.length)),'honest laps all count and are timed');
   assert.ok(sim.cars.reduce((sum,c)=>sum+c.overtakes,0)>=10,'drivers make competitive passes');
   assert.ok(maxStoppedDuration<12,'drivers recover instead of grinding a wall indefinitely');
   assert.ok(longestOverlap<.2,'contact bodies separate promptly');

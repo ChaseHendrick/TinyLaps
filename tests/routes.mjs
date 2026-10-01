@@ -142,6 +142,12 @@ for (const [id, config] of Object.entries(catalog.maps)) {
     }
   }
   assert(sim.cars.every(car => car.laps >= 1), `${id}: every racer completes the actual route`);
+  // Honest racing never trips lap integrity: every lap counts and is timed.
+  for (const car of sim.cars) {
+    assert(car.lapCuts === 0 && !car.offRoute, `${id}: ${car.name} stays on the route without a cut`);
+    assert.equal(car.laps, Math.floor(car.progress / track.length), `${id}: ${car.name} lap count matches its route progress`);
+    assert(car.lastLap > 0 && car.bestLap > 0, `${id}: ${car.name} laps are timed`);
+  }
   assert(longestStopped.every(value => value < 12), `${id}: normal AI does not shuttle or remain stuck against scenery`);
   if (scenery) assert(onRoad.every(value => value / checks > .94), `${id}: all racers remain on the city streets`);
   report.laps = sim.cars.map(car => car.laps);

@@ -96,6 +96,11 @@ export function normalizeCarProfiles(profiles) {
 }
 const G = 9.81;
 const LANES = [-1.55, 0, 1.55];
+// Route membership for lap integrity, in meters from the race line. Leaving
+// clears the outer corner of a city junction (7.2 m) and circuit barriers
+// (4.1 m). Rejoining needs the car back on the race line's road. The slack
+// absorbs a U-turn rejoining slightly past where the car left.
+const ROUTE_LEAVE = 8, ROUTE_REJOIN = 4, ROUTE_SLACK = 10;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const mod = (v, d) => ((v % d) + d) % d;
 const angle = v => mod(v + Math.PI, Math.PI * 2) - Math.PI;
@@ -160,7 +165,11 @@ export class RaceSimulation {
         heading:Math.atan2(p.tx, p.tz), yawRate:0,
         speed:0, tx:p.tx, tz:p.tz, curvature:p.curvature,
         laps:0, rank:id + 1, bestLap:null, lastLap:null, currentLapTime:0,
-        lapStartedAt:null, nextLapLine:0, overtakes:0,
+        // The peak stays null until first measured, so a save from before it
+        // existed resumes from its restored progress. lapCuts counts shortcuts
+        // by the player; lapCut marks a lap in progress that will not be timed.
+        lapStartedAt:null, nextLapLine:0, progressPeak:null, teleportGain:0,
+        offRoute:false, offRouteDriven:false, lapCut:false, lapCuts:0, overtakes:0,
         throttle:0, brake:0, steering:0, slip:0, frontSlip:0, rearSlip:0,
         longitudinalSpeed:0, lateralSpeed:0, longitudinalAcceleration:0,
         lateralAcceleration:0, frontLoad:mass * G * rearAxle / wheelbase,
@@ -240,7 +249,8 @@ export class RaceSimulation {
     car.x = x; car.z = z;
     const p = this._project(car,true);
     const delta = mod(p.distance-car.distance+this.trackLength*.5,this.trackLength)-this.trackLength*.5;
-    car.progress += delta;
+    this._place(car,delta,this.elapsed);
+    car.offRoute = car.offRouteDriven = false;
     car.distance = p.distance;
     car.lane = p.lane;
     car.tx = p.tx; car.tz = p.tz; car.curvature = p.curvature;
@@ -248,9 +258,28 @@ export class RaceSimulation {
     car.heading = Number.isFinite(heading) ? angle(heading) : Math.atan2(p.tx,p.tz);
     car.vx = car.vz = car.vy = car.yawRate = car.speed = car.slip = 0;
     car.airborne = false;car.groundHeight=p.y;
-    car.nextLapLine = Math.max(car.nextLapLine,(Math.floor(car.progress/this.trackLength)+1)*this.trackLength);
+    car.currentLapTime = car.lapStartedAt === null ? 0 : this.elapsed - car.lapStartedAt;
     car.intent = 'Recovering';
     return true;
+  }
+
+  /** Moves progress by a placement rather than by driving the route. */
+  _place(car,delta,time) {
+    const previous = car.progress;
+    car.progress += delta;
+    if (!Number.isFinite(car.progressPeak)) car.progressPeak = previous;
+    car.progressPeak = Math.max(car.progressPeak,car.progress);
+    // A hop over the line still completes that lap, without a time. The next
+    // lap is timed from here. Placed ground within a lap, including many small
+    // grab moves, cannot be timed once it exceeds 5 m.
+    if (car.progress >= car.nextLapLine && previous < car.nextLapLine) {
+      if (car.nextLapLine > 0) car.laps++;
+      car.lapStartedAt = time;
+      car.lapCut = false;
+      car.teleportGain = car.progress - car.nextLapLine;
+    } else car.teleportGain = (car.teleportGain || 0) + delta;
+    if (car.teleportGain > 5) car.lapStartedAt = null;
+    car.nextLapLine = Math.max(car.nextLapLine,(Math.floor(car.progress/this.trackLength)+1)*this.trackLength);
   }
 
   repairCar(id) {
@@ -274,7 +303,8 @@ export class RaceSimulation {
     return this;
   }
 
-  _project(car,global = false) {
+  /** Nearest race line point. Local-only searches never leave the window. */
+  _project(car,global = false,localOnly = false) {
     const n = this._sampleCount;
     const cell = this.trackLength / n;
     const center = Math.floor(mod(car.distance, this.trackLength) / cell);
@@ -303,7 +333,7 @@ export class RaceSimulation {
         lane:(car.x - x) * -tz + (car.z - z) * tx };
     };
     for (let offset = -radius; offset <= radius; offset++) check(center + offset);
-    if (global || best > 100) for (let i = 0; i < n; i++) check(i);
+    if (global || (!localOnly && best > 100)) for (let i = 0; i < n; i++) check(i);
     return result;
   }
 
@@ -351,6 +381,8 @@ export class RaceSimulation {
       if (gap > -2.6 && gap < 3.2 && other.lane > sweptMin && other.lane < sweptMax) return false;
       const lateral = Math.abs(other.lane - target);
       if (other.routeTraffic && other.speed < 0 && lateral < clearance && gap > -2.6 && gap < 13) return false;
+      // A stopped car just ahead blocks its lane beyond the merge window.
+      if (other.speed < .5 && lateral < clearance && gap > 0 && gap < 8) return false;
       const targetDifference = Math.abs(other.targetLane - target);
       if (Math.min(lateral, targetDifference) > clearance) continue;
       const rearBuffer = 2.8 + Math.max(0, other.speed - car.speed) * (.75 - car.aggression * .25);
@@ -391,9 +423,12 @@ export class RaceSimulation {
     const v = car.vx * r.x + car.vz * r.z;
     car.longitudinalSpeed = u;
     car.lateralSpeed = v;
-    const trackHeading = Math.atan2(car.tx, car.tz);
+    // Knocked off the route, head for the nearest road rather than through
+    // whatever lies between the car and where it left.
+    const route = car.offRoute ? this._project(car,true) : car;
+    const trackHeading = Math.atan2(route.tx, route.tz);
     const headingError = angle(trackHeading - car.heading);
-    const recovering = Math.abs(car.lane) > 2.8 || Math.abs(headingError) > 1.15 || car.slip > .65;
+    const recovering = Math.abs(route.lane) > 2.8 || Math.abs(headingError) > 1.15 || car.slip > .65;
     car.laneCooldown = Math.max(0, car.laneCooldown - dt);
     car.passing = false;
     const front = this._front(car, car.targetLane);
@@ -458,7 +493,10 @@ export class RaceSimulation {
       const compression = Math.max(.45, 1 - car.curvature * car.lane);
       const spacing = (2.9 + (1 - car.aggression) * 1.6
         + Math.max(0,car.speed-localFront.car.speed)*.45) / compression;
-      const followSpeed = localFront.car.speed + (localFront.gap - spacing) * 1.7;
+      let followSpeed = localFront.car.speed + (localFront.gap - spacing) * 1.7;
+      // Swinging out around a stopped car needs forward motion. Keep a crawl
+      // while the chosen lane is clear; contact impulses handle a tight gap.
+      if (Math.abs(car.targetLane - car.lane) > .3 && this._front(car, car.targetLane).gap > 8) followSpeed = Math.max(followSpeed, 1.6);
       desiredSpeed = Math.min(desiredSpeed, Math.max(0,followSpeed));
     }
     if (recovering) desiredSpeed = Math.min(desiredSpeed, 5.2);
@@ -478,13 +516,15 @@ export class RaceSimulation {
     car.gear = reversing ? -1 : 1;
 
     const lookahead = recovering ? 3.2 : clamp(1.7 + Math.abs(u) * (.27 + (1 - car.aggression) * .12), 2.5, 7.2);
-    const target = this._sample(car.distance + lookahead);
+    const target = this._sample(route.distance + lookahead);
     const targetX = target.x - target.tz * car.targetLane;
     const targetZ = target.z + target.tx * car.targetLane;
     const dx = targetX - car.x;
     const dz = targetZ - car.z;
     const lateralTarget = dx * r.x + dz * r.z;
-    const pursuit = Math.atan2(2 * car.wheelbase * lateralTarget, Math.max(1,dx * dx + dz * dz));
+    // A racing target is within 8 m. Capping the distance keeps a car knocked
+    // far off the route steering back instead of driving straight away.
+    const pursuit = Math.atan2(2 * car.wheelbase * lateralTarget, clamp(dx * dx + dz * dz,1,64));
     let steering = pursuit;
     if (reversing) steering = -Math.sign(headingError || car.lane || 1) * .67;
     // Countersteer a rear slide. Better awareness catches it earlier.
@@ -776,11 +816,39 @@ export class RaceSimulation {
   }
 
   _updateProgress(car, dt, startTime) {
-    const projection = this._project(car);
+    // Progress follows only the stretch of route beside the car, so it never
+    // snaps to another part of the course.
+    let projection = this._project(car,false,true);
     const previous = car.progress;
-    const delta = angle((projection.distance - car.distance) / this.trackLength * Math.PI * 2)
+    let delta = angle((projection.distance - car.distance) / this.trackLength * Math.PI * 2)
       / (Math.PI * 2) * this.trackLength;
-    car.progress += delta;
+    if (!Number.isFinite(car.progressPeak)) car.progressPeak = previous;
+    let placed = false;
+    if (car.offRoute || Math.abs(projection.lane) > ROUTE_LEAVE) {
+      // Off the route, the whole course is searched for a rejoin. Rejoining
+      // behind or near the best progress is ordinary, and returning to where
+      // the car left undoes an earlier cut. Rejoining farther ahead after the
+      // player drove off the route is a cut: the car keeps that position but
+      // must complete the circuit again, and that lap cannot set a time. An AI
+      // racer only leaves when knocked off, so it rejoins like a placed car.
+      if (car.id === this.playerCarId) car.offRouteDriven = true;
+      const nearest = car.offRoute ? this._project(car,true) : projection;
+      if (car.offRoute && Math.abs(nearest.lane) <= ROUTE_REJOIN) {
+        const top = car.progressPeak + ROUTE_SLACK;
+        const rejoined = top - mod(top - nearest.distance, this.trackLength);
+        const direct = previous + angle((nearest.distance - car.distance) / this.trackLength * Math.PI * 2)
+          / (Math.PI * 2) * this.trackLength;
+        if (!car.offRouteDriven) placed = rejoined < direct - 1e-6;
+        else if (rejoined < direct - 1e-6) { car.lapCut = true; car.lapCuts++; }
+        else if (rejoined > direct + 1e-6) car.lapCut = false;
+        delta = (placed ? direct : rejoined) - previous;
+        projection = nearest;
+        car.offRoute = car.offRouteDriven = false;
+      } else car.offRoute = true;
+    }
+    if (placed) this._place(car,delta,startTime + dt);
+    else car.progress += delta;
+    car.progressPeak = Math.max(car.progressPeak,car.progress);
     car.distance = projection.distance;
     car.lane = projection.lane;
     const environmentSurface = this.environment.sampleSurface?.(car.x,car.z,projection.y);
@@ -802,13 +870,19 @@ export class RaceSimulation {
     car.speed = Math.hypot(car.vx,car.vz);
     if (delta > 0 && car.progress >= car.nextLapLine && previous < car.nextLapLine) {
       const crossing = startTime + dt * clamp((car.nextLapLine - previous) / delta,0,1);
-      if (car.nextLapLine > 0 && car.lapStartedAt !== null) {
-        const lap = crossing - car.lapStartedAt;
-        car.lastLap = lap;
-        car.bestLap = car.bestLap === null ? lap : Math.min(car.bestLap,lap);
+      // Every completed circuit counts. Only a lap timed from the line, with no
+      // cut or placement along the way, records a last or best lap time.
+      if (car.nextLapLine > 0) {
+        if (car.lapStartedAt !== null && !car.lapCut) {
+          const lap = crossing - car.lapStartedAt;
+          car.lastLap = lap;
+          car.bestLap = car.bestLap === null ? lap : Math.min(car.bestLap,lap);
+        }
         car.laps++;
       }
       car.lapStartedAt = crossing;
+      car.lapCut = false;
+      car.teleportGain = 0;
       car.nextLapLine += this.trackLength;
     }
     car.currentLapTime = car.lapStartedAt === null ? 0 : this.elapsed - car.lapStartedAt;
