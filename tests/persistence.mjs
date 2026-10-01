@@ -64,3 +64,22 @@ assert(restoreRace(revisedSave,revised));
 assert(!revised.sim.migratedRoute);
 assert.equal(revised.sim.cars[4].progress,save.cars[4].progress);
 console.log('Route migration preserves the world and damage without restoring racers outside the new city streets.');
+
+// A save from before lap integrity has no route peak, cut, or placement
+// fields. The racers resume from their restored progress with nothing voided.
+{
+  const old=structuredClone(save);
+  for (const car of old.cars) for (const key of ['progressPeak','teleportGain','offRoute','offRouteDriven','lapCut','lapCuts']) delete car[key];
+  const resumed=world();
+  assert(restoreRace(old,resumed));
+  const car=resumed.sim.cars[4];
+  assert.equal(car.progress,save.cars[4].progress);
+  assert.equal(car.lapCuts,0);assert.equal(car.lapCut,false);assert.equal(car.offRoute,false);
+  assert.equal(car.progressPeak,null,'the missing peak is measured from the restored progress, not the starting grid');
+  resumed.sim.update(1);
+  assert(car.progressPeak>=save.cars[4].progress&&car.progressPeak-car.progress<1e-9,'the route peak starts at the restored progress');
+  assert.equal(car.lapCuts,0,'resuming an old save is not a cut');
+  const fresh=world();assert(restoreRace(save,fresh));
+  assert.equal(fresh.sim.cars[4].progressPeak,save.cars[4].progressPeak,'new saves keep the route peak');
+  console.log('Saves without lap integrity fields resume from their restored progress.');
+}
